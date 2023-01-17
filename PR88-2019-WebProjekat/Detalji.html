@@ -1,0 +1,376 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title></title>
+    <style>
+        .error {
+            font-size: 10px;
+            color: red;
+        }
+    </style>
+    <link rel="stylesheet" href="Content/bootstrap.css" />
+    <script src="Scripts/jquery-3.3.1.js"></script>
+    <script type="text/javascript">
+        var htmlSadrzaj = "";
+
+        $(document).ready(function () {
+            var parametar = new URLSearchParams(window.location.search);
+            var naziv = parametar.get('naziv');
+
+            $.get("/api/fitnesCentar", function (data) {
+
+                for (element in data) {
+                    if (data[element].Naziv == naziv) {
+                        var fitnesCentar = data[element];
+                        break;
+                    }
+                }
+
+                $.get('/api/korisnici', function (data) {
+                    if (data == null) {
+                        var uloga = -1;
+                    }
+                    else {
+                        uloga = data.Uloga;
+                    }
+                    PrikazDetalja(fitnesCentar, uloga, data);
+
+                    $('#btnKomentar').click(function () {
+                        SacuvajKomentar(data, fitnesCentar.Naziv, fitnesCentar.Vlasnik.Id);
+                    });
+                });
+
+                $(document).on('click', '.btnPrijava', function () {
+                    var niz = $(this).attr('name');
+                    var treningId = niz.split('-')[0];
+                    var maksPosetilaca = niz.split('-')[1];
+                    var prijavljeni = niz.split('-')[2];
+
+                    $.get('/api/korisnici', function (data) {
+                        for (element in data.treninzi) {
+
+                            if (data.treninzi[element] == treningId) {
+                                alert('Vec ste se prijavili za ovaj trening.');
+                                return;
+                            }
+
+                            if (maksPosetilaca == prijavljeni) {
+                                alert('Prijavljen je maksimalan broj posetilaca.');
+                                return;
+                            }
+                        }
+
+                        $.ajax({
+                            url: '/api/korisnici/' + data.Id,
+                            type: 'PUT',
+                            dataType: 'json',
+                            data: { 'IdTreninga': treningId },
+                            success: function (result) {
+                                console.log('uspesno');
+                            },
+                            error: function (xhr, ajaxOptions, thrownError) {
+                                alert('Greska: ' + xhr.status);
+                            }
+                        });
+
+                        $.ajax({
+                            url: '/api/treninzi/' + treningId,
+                            type: 'PUT',
+                            dataType: 'json',
+                            data: { 'Id': treningId },
+                            success: function (result) {
+                                alert('Uspesno ste se prijavili za ' + result + '.');
+                                PrikazDetalja(fitnesCentar, 0);
+                            },
+                            error: function (xhr, ajaxOptions, thrownError) {
+                                alert('Greska: ' + xhr.status);
+                            }
+                        });
+                    });
+                });
+
+                $(document).on('click', '.btnOdobri', function () {
+                    let niz = $(this).attr('name');
+                    let idKomentara = niz.split('-')[0];
+                    let idVlasnika = niz.split('-')[1];
+                    OdobriKomentar(idKomentara, idVlasnika, fitnesCentar.Naziv);
+                });
+
+                $(document).on('click', '.btnOdbij', function () {
+                    let niz = $(this).attr('name');
+                    let idKomentara = niz.split('-')[0];
+                    let idVlasnika = niz.split('-')[1];
+                    OdbijKomentar(idKomentara, idVlasnika, fitnesCentar.Naziv);
+                });
+            });
+        });
+
+        function PrikazDetalja(fitnesCentar, uloga, korisnik) {
+
+            htmlSadrzaj = '<header class="text-center bg-primary"><h1>' + fitnesCentar.Naziv + '</h1></header>';
+            htmlSadrzaj += '<table class="table table-striped table-bordered">';
+            htmlSadrzaj += '<tr><td class="col-xs-6">Adresa: </td><td>' + fitnesCentar.Adresa + '</td></tr>';
+            htmlSadrzaj += '<tr><td>Godina otvaranja: </td><td>' + fitnesCentar.GodinaOtvaranja + '</td></tr>';
+            htmlSadrzaj += '<tr><td>Mesecna clanarina: </td><td>' + fitnesCentar.MesecnaClanarina + '</td></tr>';
+            htmlSadrzaj += '<tr><td>Godisnja clanarina: </td><td>' + fitnesCentar.GodisnjaClanarina + '</td></tr>';
+            htmlSadrzaj += '<tr><td>Cena treninga: </td><td>' + fitnesCentar.CenaTreninga + '</td></tr>';
+            htmlSadrzaj += '<tr><td>Cena grupnog treninga: </td><td>' + fitnesCentar.CenaGrupnogTreninga + '</td></tr>';
+            htmlSadrzaj += '<tr><td>Cena treninga sa personalnim trenerom: </td><td>' + fitnesCentar.CenaTreningaSaPTrenerom + '</td></tr>';
+            htmlSadrzaj += '</table>';
+            htmlSadrzaj += '<header><h3>Vlasnik:</h3></header>';
+            htmlSadrzaj += '<table class="table table-striped table-bordered">';
+            htmlSadrzaj += '<tr><td class="col-xs-6">Ime: </td><td>' + fitnesCentar.Vlasnik.Ime + '</td></tr>';
+            htmlSadrzaj += '<tr><td>Prezime: </td><td>' + fitnesCentar.Vlasnik.Prezime + '</td></tr>';
+            htmlSadrzaj += '<tr><td>Email: </td><td>' + fitnesCentar.Vlasnik.Email + '</td></tr>';
+            htmlSadrzaj += '</table>';
+
+            $.get("/api/treninzi", function (data) {
+                var treninzi = [];
+                for (element in data) {
+                    var fc = data[element].FitnesCentar;
+                    if (fc.Naziv == fitnesCentar.Naziv) {
+                        treninzi.push(data[element]);
+                    }
+                }
+
+                htmlSadrzaj += '<header><h3>Predstojeci grupni treninzi:</h3></header>';
+                htmlSadrzaj += '<table class="table table-striped table-bordered">';
+                htmlSadrzaj += '<tr><th class="col-xs-2">Naziv</th><th class="col-xs-2">Tip</th><th class="col-xs-2">Datum i vreme</th><th class="col-xs-2">Trajanje</th><th class="col-xs-2">Maksimalan broj posetilaca</th><th class="col-xs-2">Broj prijavljenih posetilaca</th></tr>';
+
+                for (element in treninzi) {
+                    let datumTreninga = Date.parse(treninzi[element].DatumIVreme);
+                    let trenutniDatum = Date.parse(Date());
+
+                    if (!treninzi[element].Obrisan) {
+                        if (trenutniDatum < datumTreninga) {
+                            let niz = (treninzi[element].DatumIVreme).split('T');
+                            let datum = niz[0].split('-');
+                            let vreme = niz[1].split(':');
+
+                            htmlSadrzaj += '<tr><td>' + treninzi[element].Naziv + '</td>';
+                            htmlSadrzaj += '<td>' + treninzi[element].Tip + '</td>';
+                            htmlSadrzaj += '<td>' + datum[2] + '/' + datum[1] + '/' + datum[0] + ' ' + vreme[0] + '/' + vreme[1] + '</td>';
+                            htmlSadrzaj += '<td>' + treninzi[element].Trajanje + ' min' + '</td>';
+                            htmlSadrzaj += '<td>' + treninzi[element].MaksPosetilaca + '</td>';
+                            htmlSadrzaj += '<td>' + treninzi[element].posetioci.length + '</td>';
+
+                            if (uloga == 0) {
+                                htmlSadrzaj += '<td><button class="btn btn-success btnPrijava" name="' + treninzi[element].Id + '-' + treninzi[element].MaksPosetilaca + '-' + treninzi[element].posetioci.length + '">Prijavi se</button></td></tr>';
+                            }
+                            else {
+                                htmlSadrzaj += '</tr>';
+                            }
+                        }
+                    }
+                }
+
+                PrikaziKomentare(fitnesCentar.Naziv);
+
+                if (uloga == 0) {
+                    $.get('/api/korisnici', function (korisnik) {
+                        $.get('/api/treninzi', function (tr) {
+
+                            var data = [];
+                            for (element in tr) {
+                                for (element1 in korisnik.treninzi) {
+                                    if (korisnik.treninzi[element1] == tr[element].Id) {
+                                        data.push(tr[element]);
+                                    }
+                                }
+                            }
+
+                            for (element in data) {
+
+                                var fc = data[element].FitnesCentar.Naziv;
+                                if (fc == fitnesCentar.Naziv) {
+                                    let datumTreninga = Date.parse(data[element].DatumIVreme);
+                                    let trenutniDatum = Date.parse(Date());
+
+                                    if (trenutniDatum > datumTreninga) {
+                                        $('#komentari').show();
+                                        $('#pocetnaStrana').hide();
+                                        break;
+                                    }
+                                }
+                            }
+
+                            $('#fitnesCentar').html(htmlSadrzaj);
+                        });
+                    });
+                }
+
+                $('#fitnesCentar').html(htmlSadrzaj);
+            });
+        }
+
+        function PrikaziKomentare(fitnesCentar) {
+            $.get("/api/komentari", function (data) {
+                var komentari = [];
+                for (element in data) {
+                    var fc = data[element].FitnesCentar;
+                    if (fc == fitnesCentar) {
+                        komentari.push(data[element]);
+                    }
+                }
+
+                $.get('/api/korisnici', function (korisnik) {
+                    var htmlKomentari = '</table id="tabelaKomentari"><header><h3>Komentari</h3></header>';
+                    htmlKomentari += '<table class="table table-striped table-bordered">';
+                    htmlKomentari += '<tr><th class="col-xs-2">Autor</th><th class="col-xs-2">Komentar</th><th class="col-xs-2">Ocena</th>';
+                    var postoji = false;
+                    for (element in komentari) {
+                        if (komentari[element].Odobren) {
+                            if (korisnik != null && komentari[element].IdVlasnika == korisnik.Id) {
+                                if (!postoji) {
+                                    htmlKomentari += '<th class="col-xs-2">Status</th>';
+                                    postoji = true;
+                                }
+
+                                htmlKomentari += '<tr><td>' + komentari[element].Posetilac + '</td>';
+                                htmlKomentari += '<td>' + komentari[element].Tekst + '</td>';
+                                htmlKomentari += '<td>' + komentari[element].Ocena + ' </td>';
+                                htmlKomentari += '<td>Odobren</td></tr>';
+                            }
+                            else {
+                                htmlKomentari += '<tr><td>' + komentari[element].Posetilac + '</td>';
+                                htmlKomentari += '<td>' + komentari[element].Tekst + '</td>';
+                                htmlKomentari += '<td>' + komentari[element].Ocena + ' </td>';
+                            }
+                        }
+                        else {
+                            if (komentari[element].Odbijen) {
+                                if (korisnik != null && komentari[element].IdVlasnika == korisnik.Id) {
+                                    htmlKomentari += '</tr><td>' + komentari[element].Posetilac + '</td>';
+                                    htmlKomentari += '<td>' + komentari[element].Tekst + '</td>';
+                                    htmlKomentari += '<td>' + komentari[element].Ocena + ' </td>';
+                                    htmlKomentari += '<td class="col-xs-2">Odbijen</td>';
+                                }
+                            }
+                            else {
+                                if (korisnik != null && komentari[element].IdVlasnika == korisnik.Id) {
+                                    htmlKomentari += '</tr><td>' + komentari[element].Posetilac + '</td>';
+                                    htmlKomentari += '<td>' + komentari[element].Tekst + '</td>';
+                                    htmlKomentari += '<td>' + komentari[element].Ocena + ' </td>';
+                                    htmlKomentari += '<td class="col-xs-2">Na cekanju</td>'
+                                    htmlKomentari += '<td class="col-xs-1"><button class="btn btn-success btnOdobri" name="' + komentari[element].Id + '-' + korisnik.Id + '">Odobri</button></td>'
+                                    htmlKomentari += '<td class="col-xs-1"><button class="btn btn-danger btnOdbij" name="' + komentari[element].Id + '-' + korisnik.Id + '">Odbij</button></td>'
+                                }
+                            }
+                        }
+                    }
+
+                    htmlKomentari += '</tr></table>';
+
+                    $('#kom').html(htmlKomentari);
+
+                    $('#komentariPrikaz').show();
+                    $('#pocetnaStrana').show();
+                });
+            });
+        }
+
+        function SacuvajKomentar(korisnik, nazivFC, idVlasnika) {
+            let tekst = $('#tekst').val();
+            let ocene = document.querySelectorAll('input[name="ocena"]');
+
+            if (tekst == "") {
+                $('#komentarError').empty().append("Unesite komentar.").show();
+            }
+            else {
+                $('#komentarError').empty().hide();
+
+                for (element in ocene) {
+                    if (ocene[element].checked) {
+                        var ocena = ocene[element].value;
+                        break;
+                    }
+                }
+
+                var posetilac = korisnik.Ime + ' ' + korisnik.Prezime;
+
+                $.post('/api/komentari', { 'Posetilac': posetilac, 'FitnesCentar': nazivFC, 'Tekst': tekst, 'Ocena': ocena, 'IdVlasnika': idVlasnika },
+                    function (result) {
+                        alert('Komentar dodat.');
+                        $('#tekst').val('');
+                    }
+                ).fail(function (xhr, ajaxOptions, thrownError) {
+                    alert('Greska: ' + xhr.status);
+                });
+            }
+        }
+
+        function OdobriKomentar(idKomentara, idVlasnika, nazivFC) {
+            $.ajax({
+                url: '/api/komentari/' + idKomentara,
+                type: 'PUT',
+                dataType: 'json',
+                data: { 'IdVlasnika': idVlasnika, 'Odobren': true, 'Odbijen': false, 'StariNazivFC': nazivFC },
+                success: function (result) {
+                    console.log('Uspesno azuriranje komentara.');
+                    PrikaziKomentare(result);
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+                    console.log('Greska kod azuriranja komentara: ' + xhr.status);
+                }
+            });
+        }
+
+        function OdbijKomentar(idKomentara, idVlasnika, nazivFC) {
+            $.ajax({
+                url: '/api/komentari/' + idKomentara,
+                type: 'PUT',
+                dataType: 'json',
+                data: { 'IdVlasnika': idVlasnika, 'Odobren': false, 'Odbijen': true, 'StariNazivFC': nazivFC  },
+                success: function (result) {
+                    console.log('Uspesno azuriranje komentara.');
+                    PrikaziKomentare(result);
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+                    console.log('Greska kod azuriranja komentara: ' + xhr.status);
+                }
+            });
+        }
+
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="row">
+            <div id="fitnesCentar">
+            </div>
+            <div id="komentariPrikaz" hidden>
+                <div id="kom">
+
+                </div>
+                <div id="pocetnaStrana" hidden>
+                    <a href="Index.html">Nazad na pocetnu stranu</a>
+                </div>
+            </div>
+            <div id="komentari" hidden>
+                <header><h3>Ostavi komentar</h3></header>
+                <div class="form-group">
+                    <label for="tekst">Komentar:</label>
+                    <input type="text" id="tekst" class="form-control" placeholder="Ostavite komentar..." />
+                    <label id="komentarError" class="error" hidden></label><br />
+                </div>
+                <div class="form-group">
+                    <label>Ocena: &nbsp;</label>
+                    <input type="radio" id="1" name="ocena" value="1" checked>
+                    <label for="1">1</label>&nbsp;&nbsp;
+                    <input type="radio" id="2" name="ocena" value="2">
+                    <label for="2">2</label>&nbsp;&nbsp;
+                    <input type="radio" id="3" name="ocena" value="3">
+                    <label for="3">3</label>&nbsp;&nbsp;
+                    <input type="radio" id="4" name="ocena" value="4">
+                    <label for="4">4</label>&nbsp;&nbsp;
+                    <input type="radio" id="5" name="ocena" value="5">
+                    <label for="5">5</label>&nbsp;&nbsp;
+                    <button style="float:right" class="btn btn-success col-xs-2" id="btnKomentar">Objavi</button>
+                </div>
+                <a href="Index.html">Nazad na pocetnu stranu</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

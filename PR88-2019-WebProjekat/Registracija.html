@@ -1,0 +1,215 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title></title>
+    <link rel="stylesheet" href="Content/bootstrap.css" />
+    <style>
+        .error {
+            font-size: 10px;
+            color: red;
+        }
+    </style>
+    <script src="Scripts/jquery-3.3.1.js"></script>
+    <script type="text/javascript">
+
+        $(document).ready(function () {
+            $('#btnRegistracija').click(function () {
+
+                var vKorisnickoIme = false;
+                var vLozinka = false;
+                var vPotvrdaLozinke = false;
+                var vIme = false;
+                var vPrezime = false;
+                var vPol = false;
+                var vEmail = false;
+                var vDatum = false;
+                var pol;
+
+                let korisnickoIme = $('#korisnickoIme').val();
+                let lozinka = $('#lozinka').val();
+                let potvrdaLozinke = $('#potvrdaLozinke').val();
+                let ime = $('#ime').val();
+                let prezime = $('#prezime').val();
+                let zenskiPol = $("#zenski").is(":checked")
+                let muskiPol = $("#muski").is(":checked")
+                let email = $('#email').val();
+                let datum = $('#datum').val();
+
+                if (korisnickoIme == "") {
+                    $('#korisnickoImeError').empty().append("Popunite polje.").show();
+                }
+                else if (!isNaN(parseInt(korisnickoIme))) {
+                    $('#korisnickoImeError').empty().append("Korisnicko ime ne moze biti broj.").show();
+                }
+                else {
+                    $('#korisnickoImeError').empty().hide();
+                    vKorisnickoIme = true;
+                }
+
+                if (lozinka == "") {
+                    $('#lozinkaError').empty().append("Popunite polje.").show();
+                }
+                else if (lozinka.length < 8) {
+                    $('#lozinkaError').empty().append("Lozinka mora da sadrzi minimum 8 karaktera.").show();
+                }
+                else {
+                    $('#lozinkaError').empty().hide();
+                    vLozinka = true;
+                }
+
+                if (potvrdaLozinke == "") {
+                    $('#potvrdaLozinkeError').empty().append("Popunite polje.").show();
+                }
+                else if (lozinka != potvrdaLozinke) {
+                    $('#potvrdaLozinkeError').empty().append("Lozinke se ne podudaraju.").show();
+                }
+                else {
+                    $('#potvrdaLozinkeError').empty().hide();
+                    vPotvrdaLozinke = true;
+                }
+
+                if (ime == "") {
+                    $('#imeError').empty().append("Popunite polje.").show();
+                }
+                else if (!isNaN(parseInt(ime))) {
+                    $('#imeError').empty().append("Ime ne moze biti broj.").show();
+                }
+                else {
+                    $('#imeError').empty().hide();
+                    vIme = true;
+                }
+
+                if (prezime == "") {
+                    $('#prezimeError').empty().append("Popunite polje.").show();
+                }
+                else if (!isNaN(parseInt(prezime))) {
+                    $('#prezimeError').empty().append("Prezime ne moze biti broj.").show();
+                }
+                else {
+                    $('#prezimeError').empty().hide();
+                    vPrezime = true;
+                }
+
+                if (!(zenskiPol || muskiPol)) {
+                    $('#polError').empty().append("Izaberite pol.").show();
+                }
+                else {
+                    if (zenskiPol) {
+                        pol = 0;
+                    }
+                    else {
+                        pol = 1;
+                    }
+
+                    $('#polError').empty().hide();
+                    vPol = true;
+                }
+
+                let niz = email.split('@');
+
+                if (email == "") {
+                    $('#emailError').empty().append("Popunite polje.").show();
+                }
+                else if (!isNaN(parseInt(email))) {
+                    $('#emailError').empty().append("Email ne moze biti broj.").show();
+                }
+                else if (niz.length != 2 || (niz[0] == "" || niz[1] == "")) {
+                    $('#emailError').empty().append("Nevalidan format email-a.").show();
+                }
+                else {
+                    $('#emailError').empty().hide();
+                    vEmail = true;
+                }
+
+                if (datum == "") {
+                    $('#datumError').empty().append("Izaberite datum.").show();
+                }
+                else {
+                    $('#datumError').empty().hide();
+                    vDatum = true;
+                }
+
+                if (vKorisnickoIme && vLozinka && vPotvrdaLozinke && vIme && vPrezime && vPol && vEmail && vDatum) {
+
+                    $.post('/api/korisnici', { 'KorisnickoIme': korisnickoIme, 'Lozinka': lozinka, 'Ime': ime, 'Prezime': prezime, 'Pol': pol, 'Email': email, 'DatumRodjenja': datum, 'Uloga': 0 },
+                        function (result) {
+                            alert(result.Ime + ', uspesno ste se registrovali!');
+                            $('#korisnickoIme').val('');
+                            $('#lozinka').val('');
+                            $('#potvrdaLozinke').val('');
+                            $('#ime').val('');
+                            $('#prezime').val('');
+                            $("#zenski").prop("checked", false);
+                            $("#muski").prop("checked", false);
+                            $('#email').val('');
+                            $('#datum').val('');
+                            window.location.replace("Index.html");
+                        }
+                    ).fail(function (data) {
+                        if (data.status == 400) {
+                            alert('Korisnik sa korisnickim imenom ' + korisnickoIme + ' vec postoji!');
+                        }
+                    });
+                }
+            });
+        });
+
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="col-sm-3"></div>
+        <div class="col-sm-6">
+            <div>
+                <h1 style="text-align:center">Registracija</h1>
+            </div>
+            <div class="form-group">
+                <label for="korisnickoIme">Korisnicko ime:</label>
+                <input type="text" id="korisnickoIme" class="form-control" placeholder="Korisnicko ime" required />
+                <label id="korisnickoImeError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="lozinka">Lozinka:</label>
+                <input type="password" id="lozinka" class="form-control" placeholder="Lozinka" required />
+                <label id="lozinkaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="potvrdaLozinke">Potvrdi lozinku:</label>
+                <input type="password" id="potvrdaLozinke" class="form-control" placeholder="Potvrdi lozinku" required />
+                <label id="potvrdaLozinkeError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="ime">Ime:</label>
+                <input type="text" id="ime" class="form-control" placeholder="Ime" required />
+                <label id="imeError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="prezime">Prezime:</label>
+                <input type="text" id="prezime" class="form-control" placeholder="Prezime" required />
+                <label id="prezimeError" class="error" hidden></label>
+            </div>
+            <div>
+                <label>Pol: &nbsp;</label>
+                <input type="radio" id="zenski" name="pol" value="ZENSKI">
+                <label for="zenski">Zenski</label>&nbsp;
+                <input type="radio" id="muski" name="pol" value="MUSKI">
+                <label for="muski">Muski</label><br />
+                <label id="polError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" class="form-control" placeholder="pera@peric.com" required />
+                <label id="emailError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="datum">Datum rodjenja:</label>
+                <input type="date" id="datum" class="form-control" placeholder="dd/MM/yy" required />
+                <label id="datumError" class="error" hidden></label>
+            </div>
+            <button class="form-control btn btn-success" id="btnRegistracija">Registruj se</button>
+            <a href="Index.html" class="form-group">Nazad na pocetnu stranu</a>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,2571 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title></title>
+    <style>
+        .error {
+            font-size: 10px;
+            color: red;
+        }
+        .containerFC {
+            margin-right: 80px;
+            margin-left: 80px;
+        }
+    </style>
+    <link rel="stylesheet" href="Content/bootstrap.css" />
+    <script src="Scripts/jquery-3.3.1.js"></script>
+    <script type="text/javascript">
+
+        $(document).ready(function () {
+
+            //################################## POCETNA #################################
+
+            $.get('/api/korisnici', function (data) {
+                if (data == null) {
+                    PrikaziFormu();
+                }
+                else {
+                    SakrijFormu();
+                    ProveriUlogu(data.Uloga);
+                }
+            });
+
+            $('#btnLogout').click(function () {
+                $.get('/api/login', function (data) {
+                    PrikaziFormu();
+                    $('#posetilacTreninzi').hide();
+                    $('#ranijiTreninziTrener').hide();
+                    $('#predstojeciTreninziTrener').hide();
+                    $('#vFitnesCentri').hide();
+                    $('#pocetna').show();
+                    $('ul[name="navigacija"]').children("li.prvi").remove();
+                    $('ul[name="navigacija"]').children("li.drugi").remove();
+                }).fail(function (xhr, ajaxOptions, thrownError) {
+                    alert('Greska: ' + xhr.status);
+                });
+            });
+
+            $('#btnLogin').click(function () {
+                let korisnickoIme = $('#korisnickoIme').val();
+                let lozinka = $('#lozinka').val();
+
+                if (korisnickoIme == "" || lozinka == "") {
+                    $('#loginError').empty().append("Unesite korisnicko ime i lozinku.").show();
+                }
+                else {
+                    $('#loginError').empty().hide();
+
+                    $.post("/api/login", { "KorisnickoIme": korisnickoIme, "Lozinka": lozinka },
+                        function (result) {
+                            $('#korisnickoIme').val('');
+                            $('#lozinka').val('');
+
+                            SakrijFormu();
+                            ProveriUlogu(result);
+                        }
+                    ).fail(function (xhr, ajaxOptions, thrownError) {
+                        if (xhr.status == 404) {
+                            $('#loginError').empty().append("Pogresno korisnicko ime ili lozinka.").show();
+                        }
+                        else if (xhr.status == 400) {
+                            alert('Nije moguca prijava jer Vas je vlasnik blokirao, ili je fitnes centar ' + (xhr.responseText).split('"')[3] + ' u kom ste radili obrisan.');
+                        }
+                        else {
+                            alert('Greska: ' + xhr.status);
+                        }
+                    });
+                }
+            });
+
+            $.get("/api/fitnesCentar", function (data) {
+                data.sort(function (x, y) {
+                    let a = x.Naziv,
+                        b = y.Naziv;
+
+                    a = a.toUpperCase();
+                    b = b.toUpperCase();
+                    return a == b ? 0 : a > b ? 1 : -1;
+                });
+
+                PrikazFC(data);
+
+                
+                var godineOtvaranja = [];
+                for (element in data) {
+                    if (!data[element].Obrisan) {
+                        godineOtvaranja.push(data[element].GodinaOtvaranja);
+                    }
+                }
+
+                let gornjaGranica = Math.max(...godineOtvaranja);
+                let donjaGranica = Math.min(...godineOtvaranja);
+
+                let pom = document.querySelector('input[name="pGodina"]');
+                pom.setAttribute('min', donjaGranica);
+                pom.setAttribute('max', gornjaGranica);
+
+                $('#btnPretraga').click(function () {
+                    PretragaPocetna(data);
+                });
+            });
+
+            $('#btnSortiranje').click(function () {
+
+                $.get("/api/fitnesCentar", function (data) {
+                    SortiranjePocetna(data);
+                });
+            });
+
+            //################################# POSETILAC ###################################
+
+            $(document).on('click', '.treninziPosetilac', function () {
+                $('#pocetna').hide();
+                $.get('/api/korisnici', function (korisnik) {
+                    $.get('/api/treninzi', function (data) {
+                        var treninzi = [];
+
+                        for (element in data) {
+                            for (element1 in korisnik.treninzi) {
+                                if (korisnik.treninzi[element1] == data[element].Id) {
+                                    treninzi.push(data[element]);
+                                }
+                            }
+                        }
+
+                        PrikaziPTreninge(treninzi);
+
+                        $('#btnPPretraga').click(function () {
+                            PretragaPTreninzi(treninzi);
+                        });
+
+                        $('#btnPSortiranje').click(function () {
+                            SortiranjePTreninzi(treninzi);
+                        });
+                    });
+                });
+            });
+
+            //##################################### TRENER #######################################
+
+            $(document).on('click', '.ranijiTreninzi', function () {
+                $('#pocetna').hide();
+                $('#predstojeciTreninziTrener').hide();
+                $.get('/api/korisnici', function (korisnik) {
+                    $.get('/api/treninzi', function (data) {
+                        var treninzi = [];
+
+                        for (element in data) {
+                            for (element1 in korisnik.treninzi) {
+                                if (korisnik.treninzi[element1] == data[element].Id) {
+                                    treninzi.push(data[element]);
+                                }
+                            }
+                        }
+                        
+                        PrikaziRanijeTreningeTrenera(treninzi);
+
+                        let datumIVreme = document.querySelector('input[name="tDatum"]');
+                        let min = korisnik.FitnesCentar.GodinaOtvaranja + '-01-01T00:00';
+                        datumIVreme.setAttribute('min', min);
+                        let trenutniDatum = new Date().toISOString();
+                        let max = trenutniDatum.split('.')[0]
+                        datumIVreme.setAttribute('max', max);
+
+                        $(document).on('click', '.btnPosetioci', function () {
+                            let niz = $(this).attr('name');
+                            let idTreninga = niz.split('-')[0];
+                            let nazivTreninga = niz.split('-')[1];
+                            PrikaziPosetioceTreninga(idTreninga, nazivTreninga);
+                        });
+
+                        $('#btnTPretraga').click(function () {
+                            PretragaTTreninzi(treninzi)
+                        });
+
+                        $('#btnTSortiranje').click(function () {
+                            SortiranjeTTreninzi(treninzi);
+                        });
+                    });
+                });
+            });
+
+            $(document).on('click', '.btnSakrijPosetioce', function () {
+                $('#posetiociTreninga').hide();
+                $('#posetiociPredstojecihTreninga').hide();
+            });
+
+            $(document).on('click', '.predstojeciTreninzi', function () {
+
+                $('#pocetna').hide();
+                $('#ranijiTreninziTrener').hide();
+                PrikaziPredstojeceTreningeTrenera();
+
+            });
+
+            $(document).on('click', '.btnPosetiociPredstojeci', function () {
+                let niz = $(this).attr('name');
+                var idTreninga = niz.split('-')[0];
+                var nazivTreninga = niz.split('-')[1];
+                PrikaziPosetioceTreninga(idTreninga, nazivTreninga);
+            });
+
+            $(document).on('click', '.btnObrisiTrening', function () {
+                let niz = $(this).attr('name');
+                var idTreninga = niz.split('-')[0];
+                var nazivTreninga = niz.split('-')[1];
+
+                ObrisiTrening(idTreninga, nazivTreninga);
+            });
+
+            $(document).on('click', '.btnIzmeniTrening', function () {
+                let idTreninga = $(this).attr('name');
+
+                $.get('/api/korisnici', function (korisnik) {
+                    $.get('/api/treninzi', function (data) {
+                        var trening = new Object();
+
+                        for (element in data) {
+                            for (element1 in korisnik.treninzi) {
+                                if (korisnik.treninzi[element1] == data[element].Id) {
+                                    if (data[element].Id == idTreninga) {
+                                        trening = data[element];
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        $('#izmenaTreninga').show();
+
+                        let naziv = document.querySelector('input[name="nIzmena"]');
+                        naziv.setAttribute('value', trening.Naziv);
+
+                        let tip = document.querySelector('input[name="tIzmena"]');
+                        tip.setAttribute('value', trening.Tip);
+
+                        let trajanje = document.querySelector('input[name="trIzmena"]');
+                        trajanje.setAttribute('value', trening.Trajanje);
+
+                        let maksPosetilaca = document.querySelector('input[name="mIzmena"]');
+                        maksPosetilaca.setAttribute('value', trening.MaksPosetilaca);
+
+                        let datum = document.querySelector('input[name="dIzmena"]');
+                        let trenutniDatum = new Date();
+                        let rezultat = trenutniDatum.setDate(trenutniDatum.getDate() + 3);
+                        let minimalni = new Date(rezultat).toISOString();
+                        let min = minimalni.split('.')[0]
+                        datum.setAttribute('min', min);
+                        datum.setAttribute('value', trening.DatumIVreme);
+
+                        $('#btnSacuvaj').click(function () {
+                            SacuvajTrening(trening);
+                        });
+                    });
+                });
+            });
+
+            $('#btnDodaj').click(function () {
+                $.get('/api/korisnici', function(korisnik){
+                    DodajTrening(korisnik);
+                });
+            });
+
+            $('#btnOdbaci').click(function () {
+                $('#izmenaTreninga').hide();
+            });
+
+            let datum = document.querySelector('input[name="dDatum"]');
+            let trenutniDatum = new Date();
+            let rezultat = trenutniDatum.setDate(trenutniDatum.getDate() + 3);
+            let minimalni = new Date(rezultat).toISOString();
+            let min = minimalni.split('.')[0]
+            datum.setAttribute('min', min);
+
+            //################################ VLASNIK ######################################
+
+            $(document).on('click', '.fitnesCentriVlasnik', function () {
+                $('#pocetna').hide();
+                PrikaziFitnesCentreVlasnika();
+            });
+
+            $(document).on('click', '.btnDodajTrenera', function () {
+                $('#izmenaFitnesCentra').hide();
+                $('#dodavanjeTrenera').show();
+                let idFitnesCentra = $(this).attr('name');
+
+                $.get('/api/fitnesCentar', function (data) {
+                    var fitnesCentar = new Object();
+                    for (element in data) {
+                        if (data[element].Id == idFitnesCentra) {
+                            fitnesCentar = data[element];
+                        }
+                    }
+
+                    $('#btnDodajT').click(function () {
+                        DodajTrenera(fitnesCentar);
+                    });
+                });
+            });
+
+            $('#btnOdbaciDodavanjeTrenera').click(function () {
+                $('#dodavanjeTrenera').hide();
+            });
+
+            $(document).on('click', '.btnIzmeniFC', function () {
+                $('#dodavanjeTrenera').hide();
+                $('#izmenaFitnesCentra').show();
+                let idFitnesCentra = $(this).attr('name');
+
+                $.get('/api/fitnesCentar', function (data) {
+                    var fitnesCentar = new Object();
+
+                    for (element in data) {
+                        if (data[element].Id == idFitnesCentra) {
+                            fitnesCentar = data[element];
+                        }
+                    }
+
+                    let naziv = document.querySelector('input[name="nazivFCIzmena"]');
+                    naziv.setAttribute('value', fitnesCentar.Naziv);
+
+                    let adresa = fitnesCentar.Adresa
+                    let ulicaIbroj = adresa.split(',')[0];
+
+                    let ulica = document.querySelector('input[name="ulicaFCIzmena"]');
+                    ulica.setAttribute('value', ulicaIbroj.split(' ')[0]);
+
+                    let broj = document.querySelector('input[name="brojFCIzmena"]');
+                    broj.setAttribute('value', ulicaIbroj.split(' ')[1]);
+
+                    let grad = document.querySelector('input[name="gradFCIzmena"]');
+                    grad.setAttribute('value', adresa.split(', ')[1]);
+
+                    let postanskiBroj = document.querySelector('input[name="postanskiBrojFCIzmena"]');
+                    postanskiBroj.setAttribute('value', adresa.split(', ')[2]);
+
+                    let godinaOtvaranja = document.querySelector('input[name="godinaOtvaranjaFCIzmena"]');
+                    godinaOtvaranja.setAttribute('value', fitnesCentar.GodinaOtvaranja);
+
+                    let mesecnaClanarina = document.querySelector('input[name="mesecnaClanarinaFCIzmena"]');
+                    mesecnaClanarina.setAttribute('value', fitnesCentar.MesecnaClanarina);
+
+                    let godisnjaClanarina = document.querySelector('input[name="godisnjaClanarinaFCIzmena"]');
+                    godisnjaClanarina.setAttribute('value', fitnesCentar.GodisnjaClanarina);
+
+                    let cenaTreninga = document.querySelector('input[name="cenaTreningaFCIzmena"]');
+                    cenaTreninga.setAttribute('value', fitnesCentar.CenaTreninga);
+
+                    let cenaGrupnogTreninga = document.querySelector('input[name="cenaGrupnogTreningaFCIzmena"]');
+                    cenaGrupnogTreninga.setAttribute('value', fitnesCentar.CenaGrupnogTreninga);
+
+                    let cenaTreningaSaPTrenerom = document.querySelector('input[name="cenaTreningaSaPTreneromFCIzmena"]');
+                    cenaTreningaSaPTrenerom.setAttribute('value', fitnesCentar.CenaTreningaSaPTrenerom);
+
+                    $('#btnSacuvajFC').click(function () {
+                        $.get('/api/komentari', function (komentari) {
+                            var data = [];
+                            for (element in komentari) {
+                                if (komentari[element].FitnesCentar == fitnesCentar.Naziv) {
+                                    data.push(komentari[element]);
+                                }
+                            }
+
+                            if (data.length == 0) {
+                                IzmeniFitnesCentar(fitnesCentar, -1);
+                            }
+                            else {
+                                IzmeniFitnesCentar(fitnesCentar, 1);
+                            }
+                        });
+                    });
+                });
+            });
+
+            $('#btnOdbaciFC').click(function () {
+                $('#izmenaFitnesCentra').hide();
+            });
+
+            $(document).on('click', '.btnObrisiFC', function () {
+                let niz = $(this).attr('name');
+                let idFitnesCentra = niz.split('-')[0];
+                let nazivFitnesCentra = niz.split('-')[1];
+
+                ObrisiFitnesCentar(idFitnesCentra, nazivFitnesCentra);
+            });
+
+            $('#btnDodajFitnesCentar').click(function () {
+                $.get('/api/korisnici', function (korisnik) {
+                    DodajFitnesCentar(korisnik);
+                });
+            });
+
+            $(document).on('click', '.btnPrikaziTrenere', function () {
+                let niz = $(this).attr('name');
+                let idFitnesCentra = niz.split('-')[0];
+                let nazivFitnesCentra = niz.split('-')[1];
+                PrikaziTrenere(idFitnesCentra, nazivFitnesCentra);
+            });
+
+            $(document).on('click', '.btnSakrijTrenere', function () {
+                $('#treneriFitnesCentra').hide();
+            });
+
+            $(document).on('click', '.btnBlokirajTrenera', function () {
+                var idTrenera = $(this).attr('name');
+                BlokirajTrenera(idTrenera);
+            });
+        });
+        //################################## POCETNA #######################################
+
+        function ProveriUlogu(result) {
+            if (result == 0) {
+                UlogovanPosetilac();
+            }
+            else if (result == 1) {
+                UlogovanTrener();
+            }
+            else if (result == 2) {
+                UlogovanVlasnik();
+            }
+        }
+
+        function SakrijFormu() {
+            $('#divIzlogovan').hide();
+            $('#divUlogovan').show();
+        }
+
+        function PrikaziFormu() {
+            $('#divIzlogovan').show();
+            $('#divUlogovan').hide();
+        }
+
+        function UlogovanPosetilac() {
+            $('ul[name="navigacija"]').append('<li class="prvi"><a href="#" style="font-size:20px" class="treninziPosetilac">Raniji grupni treninzi</a></li>');
+        }
+
+        function UlogovanTrener() {
+            $('ul[name="navigacija"]').append('<li class="prvi"><a href="#" style="font-size:20px" class="ranijiTreninzi">Raniji grupni treninzi</a></li>');
+            $('ul[name="navigacija"]').append('<li class="drugi"><a href="#" style="font-size:20px" class="predstojeciTreninzi">Predstojeci grupni treninzi</a></li>');
+        }
+
+        function UlogovanVlasnik() {
+            $('ul[name="navigacija"]').append('<li class="prvi"><a href="#" style="font-size:20px" class="fitnesCentriVlasnik">Moji fitnes centri</a></li>');
+        }
+
+        function PrikazFC(data) {
+            let tabela = '<table class="table table-striped table-bordered">';
+            tabela += '<tr><th>Naziv</th><th>Adresa</th><th>Godina otvaranja</th><th></th></tr>';
+            for (element in data) {
+                if (!data[element].Obrisan) {
+                    let fitnesCentar = '<td>' + data[element].Naziv + '</td>';
+                    fitnesCentar += '<td>' + data[element].Adresa + '</td>';
+                    fitnesCentar += '<td>' + data[element].GodinaOtvaranja + '</td>';
+                    fitnesCentar += '<td><a href="Detalji.html?naziv=' + data[element].Naziv + '" class="btn btn-info" id="btnDetalji">Detalji</a></td>';
+                    tabela += '<tr>' + fitnesCentar + '</tr>';
+                }
+            }
+            tabela += '</table>';
+            $('#fitnesCentri').html(tabela);
+        }
+
+        function SortiranjePocetna(data) {
+            let kriterijum = $('#kriterijumSortiranja').val();
+            let nacin = $('#nacinSortiranja').val();
+
+            if (kriterijum == 'Godina otvaranja') {
+                kriterijum = 'GodinaOtvaranja';
+            }
+
+            if (kriterijum == "" || nacin == "") {
+                $('#sortiranjeError').empty().append("Izaberite kriterijum i nacin sortiranja.").show();
+            }
+            else {
+                $('#sortiranjeError').empty().hide();
+
+                if (nacin == 'Rastuce') {
+                    data.sort(function (x, y) {
+                        let a = x[kriterijum],
+                            b = y[kriterijum];
+
+                        if (kriterijum != 'GodinaOtvaranja') {
+                            a = a.toUpperCase();
+                            b = b.toUpperCase();
+                        }
+                        return a == b ? 0 : a > b ? 1 : -1;
+                    });
+                }
+
+                if (nacin == 'Opadajuce') {
+
+                    data.sort(function (x, y) {
+                        let a = x[kriterijum],
+                            b = y[kriterijum];
+
+                        if (kriterijum != 'GodinaOtvaranja') {
+                            a = a.toUpperCase();
+                            b = b.toUpperCase();
+                        }
+                        return a == b ? 0 : a > b ? -1 : 1;
+                    });
+                }
+
+                PrikazFC(data);
+            }
+        }
+
+        function PretragaPocetna(data) {
+            let poNazivu = $('#pretragaNaziv').val();
+            let poAdresi = $('#pretragaAdresa').val();
+            let poGodini = $('#pretragaGodina').val();
+
+            poNazivu = poNazivu.toUpperCase();
+            poAdresi = poAdresi.toUpperCase();
+
+            if (poNazivu == "" && poAdresi == "" && poGodini == "") {
+                $('#pretragaError').empty().append("Izaberite kriterijume pretrage.").show();
+            }
+            else {
+                $('#pretragaError').empty().hide();
+
+                let data1 = [];
+
+                //po nazivu, adresi i godini
+                if (poNazivu != "" && poAdresi != "" && poGodini != "") {
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        adresa = (data[element].Adresa).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        let sadrziAdresu = adresa.includes(poAdresi);
+                        if (sadrziNaziv && sadrziAdresu && data[element].GodinaOtvaranja == poGodini && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po nazivu i adresi
+                else if (poNazivu != "" && poAdresi != "" && poGodini == "") {
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        adresa = (data[element].Adresa).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        let sadrziAdresu = adresa.includes(poAdresi);
+                        if (sadrziNaziv && sadrziAdresu && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po nazivu i godini
+                else if (poNazivu != "" && poAdresi == "" && poGodini != "") {
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        if (sadrziNaziv && data[element].GodinaOtvaranja == poGodini && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po adresi i godini
+                else if (poNazivu == "" && poAdresi != "" && poGodini != "") {
+                    for (element in data) {
+                        adresa = (data[element].Adresa).toUpperCase();
+                        let sadrziAdresu = adresa.includes(poAdresi);
+                        if (sadrziAdresu && data[element].GodinaOtvaranja == poGodini && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po nazivu
+                else if (poNazivu != "" && poAdresi == "" && poGodini == "") {
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        if (sadrziNaziv && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po adresi
+                else if (poNazivu == "" && poAdresi != "" && poGodini == "") {
+                    for (element in data) {
+                        adresa = (data[element].Adresa).toUpperCase();
+                        let sadrziAdresu = adresa.includes(poAdresi);
+                        if (sadrziAdresu && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po godini
+                else if (poNazivu == "" && poAdresi == "" && poGodini != "") {
+                    for (element in data) {
+                        if (data[element].GodinaOtvaranja == poGodini && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+
+                if (data1.length == 0) {
+                    alert('Ne postoje trazeni fitnes centri.');
+                    data.sort(function (x, y) {
+                        let a = x.Naziv,
+                            b = y.Naziv;
+
+                        a = a.toUpperCase();
+                        b = b.toUpperCase();
+                        return a == b ? 0 : a > b ? 1 : -1;
+                    });
+                    PrikazFC(data);
+                }
+                else {
+                    PrikazFC(data1);
+                }
+
+                $('#pretragaNaziv').val('');
+                $('#pretragaAdresa').val('');
+                $('#pretragaGodina').val('');
+            }            
+        }
+
+        //################################# POSETILAC ####################################
+
+        function PrikaziPTreninge(data) {
+            var htmlSadrzaj = '<table class="table table-striped table-bordered" id="tabela">';
+            htmlSadrzaj += '<tr><th class="col-xs-2">Fitnes centar</th><th class="col-xs-2">Naziv treninga</th><th class="col-xs-2">Tip</th><th class="col-xs-2">Datum i vreme</th><th class="col-xs-2">Trajanje</th><th class="col-xs-2">Maksimalan broj posetilaca</th></tr>';
+
+            for (element in data) {
+                let datumTreninga = Date.parse(data[element].DatumIVreme);
+                let trenutniDatum = Date.parse(Date());
+
+                if (!data[element].Obrisan) {
+                    if (trenutniDatum > datumTreninga) {
+
+                        let niz = (data[element].DatumIVreme).split('T');
+                        let datum = niz[0].split('-');
+                        let vreme = niz[1].split(':');
+
+                        htmlSadrzaj += '<tr><td>' + data[element].FitnesCentar.Naziv + '</td>';
+                        htmlSadrzaj += '<td>' + data[element].Naziv + '</td>';
+                        htmlSadrzaj += '<td>' + data[element].Tip + '</td>';
+                        htmlSadrzaj += '<td>' + datum[2] + '/' + datum[1] + '/' + datum[0] + ' ' + vreme[0] + '/' + vreme[1] + '</td>';
+                        htmlSadrzaj += '<td>' + data[element].Trajanje + ' min' + '</td>';
+                        htmlSadrzaj += '<td>' + data[element].MaksPosetilaca + '</td></tr>';
+                    }
+                }
+            }
+
+            htmlSadrzaj += '</table>';
+            $('#pTreninzi').html(htmlSadrzaj);
+
+            $('#posetilacTreninzi').show();
+
+        }
+
+        function PretragaPTreninzi(data) {
+
+            let poNazivu = $('#pPretragaNaziv').val();
+            let poTipu = $('#pPretragaTip').val();
+            let poNazivuFC = $('#pPretragaNazivFC').val();
+
+            poNazivu = poNazivu.toUpperCase();
+            poTipu = poTipu.toUpperCase();
+            poNazivuFC = poNazivuFC.toUpperCase();
+
+            if (poNazivu == "" && poTipu == "" && poNazivuFC == "") {
+                $('#pPretragaError').empty().append("Izaberite kriterijume pretrage.").show();
+            }
+            else {
+                $('#pPretragaError').empty().hide();
+
+                let data1 = [];
+
+                //po nazivu, tipu i nazivu fitnes centra
+                if (poNazivu != "" && poTipu != "" && poNazivuFC != "") {
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        tip = (data[element].Tip).toUpperCase();
+                        nazivFC = (data[element].FitnesCentar.Naziv).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        let sadrziTip = tip.includes(poTipu);
+                        let sadrziNazivFC = nazivFC.includes(poNazivuFC);
+                        if (sadrziNaziv && sadrziTip && sadrziNazivFC && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po nazivu i tipu
+                else if (poNazivu != "" && poTipu != "" && poNazivuFC == "") {
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        tip = (data[element].Tip).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        let sadrziTip = tip.includes(poTipu);
+                        if (sadrziNaziv && sadrziTip && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po nazivu i nazivu fitnes centra
+                else if (poNazivu != "" && poTipu == "" && poNazivuFC != "") {
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        nazivFC = (data[element].FitnesCentar.Naziv).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        let sadrziNazivFC = nazivFC.includes(poNazivuFC);
+                        if (sadrziNaziv && sadrziNazivFC && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po tipu i nazivu fitnes centra
+                else if (poNazivu == "" && poTipu != "" && poNazivuFC != "") {
+                    for (element in data) {
+                        tip = (data[element].Tip).toUpperCase();
+                        nazivFC = (data[element].FitnesCentar.Naziv).toUpperCase();
+                        let sadrziTip = tip.includes(poTipu);
+                        let sadrziNazivFC = nazivFC.includes(poNazivuFC);
+                        if (sadrziTip && sadrziNazivFC && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po nazivu
+                else if (poNazivu != "" && poTipu == "" && poNazivuFC == "") {
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        if (sadrziNaziv && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po tipu
+                else if (poNazivu == "" && poTipu != "" && poNazivuFC == "") {
+                    for (element in data) {
+                        tip = (data[element].Tip).toUpperCase();
+                        let sadrziTip = tip.includes(poTipu);
+                        if (sadrziTip && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po nazivu fitnes centra
+                else if (poNazivu == "" && poTipu == "" && poNazivuFC != "") {
+                    for (element in data) {
+                        nazivFC = (data[element].FitnesCentar.Naziv).toUpperCase();
+                        let sadrziNazivFC = nazivFC.includes(poNazivuFC);
+                        if (sadrziNazivFC && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+
+                if (data1.length == 0) {
+                    alert('Ne postoje trazeni treninzi.');
+                    PrikaziPTreninge(data);
+                }
+                else {
+                    PrikaziPTreninge(data1);
+                }
+
+                $('#pPretragaNaziv').val('');
+                $('#pPretragaTip').val('');
+                $('#pPretragaNazivFC').val('');
+            }
+        }
+
+        function SortiranjePTreninzi(data) {
+
+            let kriterijum = $('#pKriterijumSortiranja').val();
+            let nacin = $('#pNacinSortiranja').val();
+
+            if (kriterijum == 'Naziv treninga') {
+                kriterijum = 'Naziv';
+            }
+            else if (kriterijum == 'Tip treninga') {
+                kriterijum = 'Tip';
+            }
+            else {
+                kriterijum = 'DatumIVreme';
+            }
+
+            if (kriterijum == "" || nacin == "") {
+                $('#pSortiranjeError').empty().append("Izaberite kriterijum i nacin sortiranja.").show();
+            }
+            else {
+                $('#pSortiranjeError').empty().hide();
+
+                if (nacin == 'Rastuce') {
+                    data.sort(function (x, y) {
+                        let a = x[kriterijum],
+                            b = y[kriterijum];
+
+                        if (kriterijum != 'DatumIVreme') {
+                            a = a.toUpperCase();
+                            b = b.toUpperCase();
+                        }
+                        return a == b ? 0 : a > b ? 1 : -1;
+                    });
+                }
+
+                if (nacin == 'Opadajuce') {
+
+                    data.sort(function (x, y) {
+                        let a = x[kriterijum],
+                            b = y[kriterijum];
+
+                        if (kriterijum != 'DatumIVreme') {
+                            a = a.toUpperCase();
+                            b = b.toUpperCase();
+                        }
+                        return a == b ? 0 : a > b ? -1 : 1;
+                    });
+                }
+
+                PrikaziPTreninge(data);
+            }
+        }
+
+        //#################################### TRENER ####################################
+
+        function PrikaziRanijeTreningeTrenera(data) {
+            var htmlSadrzaj = '<table class="table table-striped table-bordered" id="tabela">';
+            htmlSadrzaj += '<tr><th class="col-xs-2">Fitnes centar</th><th class="col-xs-2">Naziv treninga</th><th class="col-xs-2">Tip</th><th class="col-xs-2">Datum i vreme</th><th class="col-xs-2">Trajanje</th><th class="col-xs-2">Maksimalan broj posetilaca</th><th class="col-xs-1">Posetioci</th></tr>';
+
+            for (element in data) {
+                let datumTreninga = Date.parse(data[element].DatumIVreme);
+                let trenutniDatum = Date.parse(Date());
+
+                if (!data[element].Obrisan) {
+                    if (trenutniDatum > datumTreninga) {
+
+                        let niz = (data[element].DatumIVreme).split('T');
+                        let datum = niz[0].split('-');
+                        let vreme = niz[1].split(':');
+
+                        htmlSadrzaj += '<tr><td>' + data[element].FitnesCentar.Naziv + '</td>';
+                        htmlSadrzaj += '<td>' + data[element].Naziv + '</td>';
+                        htmlSadrzaj += '<td>' + data[element].Tip + '</td>';
+                        htmlSadrzaj += '<td>' + datum[2] + '/' + datum[1] + '/' + datum[0] + ' ' + vreme[0] + '/' + vreme[1] + '</td>';
+                        htmlSadrzaj += '<td>' + data[element].Trajanje + ' min' + '</td>';
+                        htmlSadrzaj += '<td>' + data[element].MaksPosetilaca + '</td>';
+                        htmlSadrzaj += '<td><button class="btn btn-success btnPosetioci" name="' + data[element].Id + '-' + data[element].Naziv + '">Prikazi posetioce</button></td></tr>';
+                    }
+                }
+            }
+
+            htmlSadrzaj += '</table>';
+            $('#tTreninzi').html(htmlSadrzaj);
+
+            $('#ranijiTreninziTrener').show();
+        }
+
+        function PretragaTTreninzi(data) {
+
+            let poNazivu = $('#tPretragaNaziv').val();
+            let poTipu = $('#tPretragaTip').val();
+            let poDatumu = $('#tPretragaDatum').val();
+
+            poNazivu = poNazivu.toUpperCase();
+            poTipu = poTipu.toUpperCase();
+
+            if (poNazivu == "" && poTipu == "" && poDatumu == "") {
+                $('#tPretragaError').empty().append("Izaberite kriterijume pretrage.").show();
+            }
+            else {
+                $('#tPretragaError').empty().hide();
+
+                let data1 = [];
+
+                //po nazivu, tipu i datumu
+                if (poNazivu != "" && poTipu != "" && poDatumu != "") {
+                    poDatumu = poDatumu + ':00';
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        tip = (data[element].Tip).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        let sadrziTip = tip.includes(poTipu);
+                        if (sadrziNaziv && sadrziTip && data[element].DatumIVreme == poDatumu && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po nazivu i tipu
+                else if (poNazivu != "" && poTipu != "" && poDatumu == "") {
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        tip = (data[element].Tip).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        let sadrziTip = tip.includes(poTipu);
+                        if (sadrziNaziv && sadrziTip && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po nazivu i datumu
+                else if (poNazivu != "" && poTipu == "" && poDatumu != "") {
+                    poDatumu = poDatumu + ':00';
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        if (sadrziNaziv && data[element].DatumIVreme == poDatumu && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po tipu i datumu
+                else if (poNazivu == "" && poTipu != "" && poDatumu != "") {
+                    poDatumu = poDatumu + ':00';
+                    for (element in data) {
+                        tip = (data[element].Tip).toUpperCase();
+                        let sadrziTip = tip.includes(poTipu);
+                        if (sadrziTip && data[element].DatumIVreme == poDatumu && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po nazivu
+                else if (poNazivu != "" && poTipu == "" && poDatumu == "") {
+                    for (element in data) {
+                        naziv = (data[element].Naziv).toUpperCase();
+                        let sadrziNaziv = naziv.includes(poNazivu);
+                        if (sadrziNaziv && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po tipu
+                else if (poNazivu == "" && poTipu != "" && poDatumu == "") {
+                    for (element in data) {
+                        tip = (data[element].Tip).toUpperCase();
+                        let sadrziTip = tip.includes(poTipu);
+                        if (sadrziTip && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+                //po datumu
+                else if (poNazivu == "" && poTipu == "" && poDatumu != "") {
+                    poDatumu = poDatumu + ':00';
+                    for (element in data) {
+                        if (data[element].DatumIVreme == poDatumu && !data[element].Obrisan) {
+                            data1.push(data[element]);
+                        }
+                    }
+                }
+
+                if (data1.length == 0) {
+                    alert('Ne postoje trazeni treninzi.');
+                    PrikaziRanijeTreningeTrenera(data);
+                }
+                else {
+                    PrikaziRanijeTreningeTrenera(data1);
+                }
+
+                $('#tPretragaNaziv').val('');
+                $('#tPretragaTip').val('');
+                $('#tPretragaDatum').val('');
+            }
+        }
+
+        function SortiranjeTTreninzi(data) {
+
+            let kriterijum = $('#tKriterijumSortiranja').val();
+            let nacin = $('#tNacinSortiranja').val();
+
+            if (kriterijum == 'Naziv treninga') {
+                kriterijum = 'Naziv';
+            }
+            else if (kriterijum == 'Tip treninga') {
+                kriterijum = 'Tip';
+            }
+            else {
+                kriterijum = 'DatumIVreme';
+            }
+
+            if (kriterijum == "" || nacin == "") {
+                $('#tSortiranjeError').empty().append("Izaberite kriterijum i nacin sortiranja.").show();
+            }
+            else {
+                $('#tSortiranjeError').empty().hide();
+
+                if (nacin == 'Rastuce') {
+                    data.sort(function (x, y) {
+                        let a = x[kriterijum],
+                            b = y[kriterijum];
+
+                        if (kriterijum != 'DatumIVreme') {
+                            a = a.toUpperCase();
+                            b = b.toUpperCase();
+                        }
+                        return a == b ? 0 : a > b ? 1 : -1;
+                    });
+                }
+
+                if (nacin == 'Opadajuce') {
+
+                    data.sort(function (x, y) {
+                        let a = x[kriterijum],
+                            b = y[kriterijum];
+
+                        if (kriterijum != 'DatumIVreme') {
+                            a = a.toUpperCase();
+                            b = b.toUpperCase();
+                        }
+                        return a == b ? 0 : a > b ? -1 : 1;
+                    });
+                }
+
+                PrikaziRanijeTreningeTrenera(data);
+            }
+        }
+
+        function PrikaziPosetioceTreninga(idTreninga, nazivTreninga) {
+            $.get('/api/korisnici', function (korisnik) {
+                $.get('/api/treninzi', function (data) {
+                    var trening = new Object();
+
+                    for (element in data) {
+                        for (element1 in korisnik.treninzi) {
+                            if (korisnik.treninzi[element1] == data[element].Id) {
+                                if (data[element].Id == idTreninga) {
+                                    trening = data[element];
+                                }
+                            }
+                        }
+                    }
+                    var htmlSadrzaj = '<header class="text-center bg-info"><h2>Posetioci treninga: ' + nazivTreninga + '</h2></header>';
+                    htmlSadrzaj += '<table class="table table-striped table-bordered">';
+                    htmlSadrzaj += '<tr><th class="col-xs-2">Ime</th><th class="col-xs-2">Prezime</th><th class="col-xs-2">Pol</th><th class="col-xs-2">Email</th><th class="col-xs-2">Datum rodjenja</th></tr>';
+
+                    for (element in trening.posetioci) {
+                        htmlSadrzaj += '<tr><td>' + trening.posetioci[element].Ime + '</td>';
+                        htmlSadrzaj += '<td>' + trening.posetioci[element].Prezime + '</td>';
+                        if (trening.posetioci[element].Pol == 0) {
+                            var pol = 'Zenski';
+                        }
+                        else {
+                            pol = 'Muski';
+                        }
+                        htmlSadrzaj += '<td>' + pol + '</td>';
+                        htmlSadrzaj += '<td>' + trening.posetioci[element].Email + '</td>';
+
+                        let niz = (trening.posetioci[element].DatumRodjenja).split('T');
+                        let datum = niz[0].split('-');
+
+                        htmlSadrzaj += '<td>' + datum[2] + '/' + datum[1] + '/' + datum[0] + '</td></tr>';
+                    }
+
+                    htmlSadrzaj += '</table>';
+                    htmlSadrzaj += '<button style="float:right" class="btn btn-success btnSakrijPosetioce">Sakrij posetioce</button></br>';
+
+                    let datumTreninga = Date.parse(trening.DatumIVreme);
+                    let trenutniDatum = Date.parse(Date());
+
+                    if (datumTreninga > trenutniDatum) {
+                        //predstojeci
+                        $('#posetiociPredstojecihTreninga').html(htmlSadrzaj);
+                        $('#posetiociPredstojecihTreninga').show();
+                    }
+                    else {
+                        //raniji
+                        $('#posetiociTreninga').html(htmlSadrzaj);
+                        $('#posetiociTreninga').show();
+                    }
+
+                });
+            });
+        }
+
+        function PrikaziPredstojeceTreningeTrenera() {
+            $.get('/api/korisnici', function (korisnik) {
+                $.get('/api/treninzi', function (tr) {
+                    var data = [];
+
+                    for (element in tr) {
+                        for (element1 in korisnik.treninzi) {
+                            if (korisnik.treninzi[element1] == tr[element].Id) {
+                                data.push(tr[element]);
+                            }
+                        }
+                    }
+
+                    var htmlSadrzaj = '<table class="table table-striped table-bordered" id="tabela">';
+                    htmlSadrzaj += '<tr><th class="col-xs-2">Fitnes centar</th><th class="col-xs-2">Naziv treninga</th><th class="col-xs-2">Tip</th><th class="col-xs-2">Datum i vreme</th><th class="col-xs-2">Trajanje</th><th class="col-xs-2">Maksimalan broj posetilaca</th><th class="col-xs-1">Posetioci</th></tr>';
+
+                    for (element in data) {
+                        let datumTreninga = Date.parse(data[element].DatumIVreme);
+                        let trenutniDatum = Date.parse(Date());
+
+                        if (!data[element].Obrisan) {
+                            if (trenutniDatum < datumTreninga) {
+
+                                let niz = (data[element].DatumIVreme).split('T');
+                                let datum = niz[0].split('-');
+                                let vreme = niz[1].split(':');
+
+                                htmlSadrzaj += '<tr><td>' + data[element].FitnesCentar.Naziv + '</td>';
+                                htmlSadrzaj += '<td>' + data[element].Naziv + '</td>';
+                                htmlSadrzaj += '<td>' + data[element].Tip + '</td>';
+                                htmlSadrzaj += '<td>' + datum[2] + '/' + datum[1] + '/' + datum[0] + ' ' + vreme[0] + '/' + vreme[1] + '</td>';
+                                htmlSadrzaj += '<td>' + data[element].Trajanje + ' min' + '</td>';
+                                htmlSadrzaj += '<td>' + data[element].MaksPosetilaca + '</td>';
+                                htmlSadrzaj += '<td><button class="btn btn-success btnPosetiociPredstojeci" name="' + data[element].Id + '-' + data[element].Naziv + '">Prikazi posetioce</button></td>';
+                                htmlSadrzaj += '<td><button class="btn btn-success btnIzmeniTrening" name="' + data[element].Id + '">Izmeni</button></td>';
+                                htmlSadrzaj += '<td><button class="btn btn-success btnObrisiTrening" name="' + data[element].Id + '-' + data[element].Naziv + '">Obrisi</button></td></tr>';
+                            }
+                        }
+                    }
+
+                    htmlSadrzaj += '</table>';
+                    $('#tPredstojeciTreninzi').html(htmlSadrzaj);
+
+                    $('#predstojeciTreninziTrener').show();
+                });
+            });
+        }
+
+        function ObrisiTrening(idTreninga, nazivTreninga) {
+            $.get('/api/korisnici', function (korisnik) {
+                $.get('/api/treninzi', function (data) {
+
+                    for (element in data) {
+                        for (element1 in korisnik.treninzi) {
+                            if (korisnik.treninzi[element1] == data[element].Id) {
+                                if (data[element].Id == idTreninga) {
+                                    if (data[element].posetioci.length == 0) {
+                                        $.ajax({
+                                            url: '/api/treninzi/' + idTreninga,
+                                            type: 'DELETE',
+                                            success: function (result) {
+                                                alert('Obrisali ste ' + nazivTreninga + '.');
+                                                PrikaziPredstojeceTreningeTrenera();
+                                            },
+                                            error: function (xhr, ajaxOptions, thrownError) {
+                                                alert('Greska: ' + xhr.status);
+                                            }
+                                        });
+                                    }
+                                    else {
+                                        alert(nazivTreninga + 'ne moze biti izbrisan jer ima prijavljene posetioce.');
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        function SacuvajTrening(trening) {
+
+            let vNaziv = false;
+            let vTip = false;
+            let vTrajanje = false;
+            let vMaksPosetilaca = false;
+
+            let naziv = $('#nazivIzmena').val();
+            let tip = $('#tipIzmena').val();
+            let trajanje = $('#trajanjeIzmena').val();
+            let maksPosetilaca = $('#maksPosetilacaIzmena').val();
+            let datum = $('#datumIVremeIzmena').val();
+
+            if (naziv == "") {
+                $('#nazivIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(naziv))) {
+                $('#nazivIzmenaError').empty().append("Naziv treninga ne moze biti broj.").show();
+            }
+            else {
+                $('#nazivIzmenaError').empty().hide();
+                vNaziv = true;
+            }
+
+            if (tip == "") {
+                $('#tipIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(tip))) {
+                $('#tipIzmenaError').empty().append("Tip treninga ne moze biti broj.").show();
+            }
+            else {
+                $('#tipIzmenaError').empty().hide();
+                vTip = true;
+            }
+
+            if (trajanje == "") {
+                $('#trajanjeIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(trajanje))) {
+                $('#trajanjeIzmenaError').empty().append("Unesite broj.").show();
+            }
+            else if (trajanje <= 0) {
+                $('#trajanjeIzmenaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#trajanjeIzmenaError').empty().hide();
+                vTrajanje = true;
+            }
+
+            if (maksPosetilaca == "") {
+                $('#maksPosetilacaIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(maksPosetilaca))) {
+                $('#maksPosetilacaIzmenaError').empty().append("Unesite broj.").show();
+            }
+            else if (maksPosetilaca <= 0) {
+                $('#maksPosetilacaIzmenaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else if (trening.posetioci.length > maksPosetilaca) {
+                $('#maksPosetilacaIzmenaError').empty().append('Ne mozete izmeniti maksimalan broj posetilaca, jer se toliko posetilaca vec prijavilo za ' + trening.Naziv + '.')
+            }
+            else {
+                $('#maksPosetilacaIzmenaError').empty().hide();
+                vMaksPosetilaca = true;
+            }
+
+            if (vNaziv && vTip && vTrajanje && vMaksPosetilaca) {
+
+                $.ajax({
+                    url: '/api/treninzi/' + trening.Id,
+                    type: 'PUT',
+                    dataType: 'json',
+                    data: { 'Naziv': naziv, 'Tip': tip, 'Trajanje': trajanje, 'DatumIVreme': datum, 'MaksPosetilaca': maksPosetilaca },
+                    success: function (result) {
+                        alert('Uspesno ste se izmenili ' + trening.Naziv + '.');
+                        PrikaziPredstojeceTreningeTrenera();
+                    },
+                    error: function (xhr, ajaxOptions, thrownError) {
+                        alert('Greska: ' + xhr.status);
+                    }
+                });
+
+                $('#izmenaTreninga').hide();
+            }
+        }
+
+        function DodajTrening(korisnik) {
+            var vNaziv = false;
+            var vTip = false;
+            var vTrajanje = false;
+            var vMaksPosetilaca = false;
+            var vDatum = false;
+
+            let naziv = $('#dNaziv').val();
+            let tip = $('#dTip').val();
+            let trajanje = $('#dTrajanje').val();
+            let maksPosetilaca = $('#dMaksPosetilaca').val();
+            let datum = $('#dDatumIVreme').val();
+
+            if (naziv == "") {
+                $('#nazivError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(naziv))) {
+                $('#nazivError').empty().append("Naziv treninga ne moze biti broj.").show();
+            }
+            else {
+                $('#nazivError').empty().hide();
+                vNaziv = true;
+            }
+
+            if (tip == "") {
+                $('#tipError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(tip))) {
+                $('#tipError').empty().append("Tip treninga ne moze biti broj.").show();
+            }
+            else {
+                $('#tipError').empty().hide();
+                vTip = true;
+            }
+
+            if (trajanje == "") {
+                $('#trajanjeError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(trajanje))) {
+                $('#trajanjeError').empty().append("Unesite broj.").show();
+            }
+            else {
+                $('#trajanjeError').empty().hide();
+                vTrajanje = true;
+            }
+
+            if (maksPosetilaca == "") {
+                $('#posetiociError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(maksPosetilaca))) {
+                $('#posetiociError').empty().append("Unesite broj.").show();
+            }
+            else if (maksPosetilaca <= 0) {
+                $('#posetiociError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#posetiociError').empty().hide();
+                vMaksPosetilaca = true;
+            }
+
+            if (datum == "") {
+                $('#datumError').empty().append("Unesite datum.").show();
+            }
+            else {
+                $('#datumError').empty().hide();
+                vDatum = true;
+            }
+
+            if (vNaziv && vTip && vTrajanje && vMaksPosetilaca && vDatum) {
+                $.post('/api/treninzi', { 'Naziv': naziv, 'Tip': tip, 'Trajanje': trajanje, 'MaksPosetilaca': maksPosetilaca, 'DatumIVreme': datum, 'FitnesCentar': korisnik.FitnesCentar },
+                    function (result) {
+
+                        var treninzi = [];
+                        treninzi.push(result);
+                        
+                        $.ajax({
+                            url: '/api/treneri/' + korisnik.Id,
+                            type: 'PUT',
+                            dataType: 'json',
+                            data: { 'treninzi': treninzi },
+                            success: function (result) {
+                                alert('Uspesno ste dodali ' + naziv + '.');
+
+                                $('#dNaziv').val('');
+                                $('#dTip').val('');
+                                $('#dTrajanje').val('');
+                                $('#dMaksPosetilaca').val('');
+                                $('#dDatumIVreme').val('');
+                                PrikaziPredstojeceTreningeTrenera();
+                            },
+                            error: function (xhr, ajaxOptions, thrownError) {
+                                alert('Greska kod azuriranja trenera: ' + xhr.status);
+                            }
+                        });
+                    }
+                ).fail(function (xhr, ajaxOptions, thrownError) {
+                    alert('Greska kod dodavanja treninga: ' + xhr.status);
+                });
+            }
+        }
+
+        //################################### VLASNIK ######################################
+
+        function PrikaziFitnesCentreVlasnika() {
+            $.get('/api/korisnici', function (korisnik) {
+                $.get('/api/fitnesCentar', function (fc) {
+                    var data = [];
+                    for (element in fc) {
+                        for (element1 in korisnik.FitnesCentri) {
+                            if (korisnik.FitnesCentri[element1] == fc[element].Id) {
+                                data.push(fc[element]);
+                            }
+                        }
+                    }
+
+                    var htmlSadrzaj = '<table class="table table-striped table-bordered">';
+                    htmlSadrzaj += '<tr><th class="col-xs-1">Naziv</th><th class="col-xs-1">Adresa</th><th class="col-xs-1">Godina otvaranja</th><th class="col-xs-1">Mesecna clanarina</th><th class="col-xs-1">Godisnja clanarina</th><th class="col-xs-1">Cena treninga</th><th class="col-xs-1">Cena grupnog treninga</th><th class="col-xs-1">Cena treninga sa personalnim trenerom</th><th class="col-xs-1"></th><th class="col-xs-1"></th><th class="col-xs-1"></th><th class="col-xs-1"></th><th class="col-xs-1"></th></tr>';
+
+                    for (element in data) {
+
+                        if (!data[element].Obrisan) {
+
+                            htmlSadrzaj += '<tr><td>' + data[element].Naziv + '</td>';
+                            htmlSadrzaj += '<td>' + data[element].Adresa + '</td>';
+                            htmlSadrzaj += '<td>' + data[element].GodinaOtvaranja + '</td>';
+                            htmlSadrzaj += '<td>' + data[element].MesecnaClanarina + '</td>';
+                            htmlSadrzaj += '<td>' + data[element].GodisnjaClanarina + '</td>';
+                            htmlSadrzaj += '<td>' + data[element].CenaTreninga + '</td>';
+                            htmlSadrzaj += '<td>' + data[element].CenaGrupnogTreninga + '</td>';
+                            htmlSadrzaj += '<td>' + data[element].CenaTreningaSaPTrenerom + '</td>';
+                            htmlSadrzaj += '<td><button class="btn btn-success btnPrikaziTrenere" name="' + data[element].Id + '-' + data[element].Naziv + '">Prikazi trenere</button></td>';
+                            htmlSadrzaj += '<td><button class="btn btn-success btnDodajTrenera" name="' + data[element].Id + '">Dodaj trenera</button></td>';
+                            htmlSadrzaj += '<td><button class="btn btn-success btnIzmeniFC" name="' + data[element].Id + '">&nbsp&nbsp&nbspIzmeni&nbsp&nbsp&nbsp</button></td>';
+                            htmlSadrzaj += '<td><button class="btn btn-success btnObrisiFC" name="' + data[element].Id + '-' + data[element].Naziv + '">&nbsp&nbsp&nbspObrisi&nbsp&nbsp&nbsp</button></td></tr>';
+                        }
+                    }
+
+                    htmlSadrzaj += '</table>';
+                    $('#vlasnikFitnesCentri').html(htmlSadrzaj);
+
+                    $('#vFitnesCentri').show();
+                });
+            });
+        }
+
+        function DodajFitnesCentar(korisnik) {
+
+            let vNaziv = false;
+            let vUlica = false;
+            let vBroj = false;
+            let vGrad = false;
+            let vPostanskiBroj = false;
+            let vGodinaOtvaranja = false;
+            let vMesecnaClanarina = false;
+            let vGodisnjaClanarina = false;
+            let vCenaTreninga = false;
+            let vCenaGrupnogTreninga = false;
+            let vCenaTreningaSaPTrenerom = false;
+
+            let naziv = $('#fNaziv').val();
+            let ulica = $('#fUlica').val();
+            let broj = $('#fBroj').val();
+            let grad = $('#fGrad').val();
+            let postanskiBroj = $('#fPostanskiBroj').val();
+            let godinaOtvaranja = $('#fGodinaOtvaranja').val();
+            let mesecnaClanarina = $('#fMesecnaClanarina').val();
+            let godisnjaClanarina = $('#fGodisnjaClanarina').val();
+            let cenaTreninga = $('#fCenaTreninga').val();
+            let cenaGrupnogTreninga = $('#fCenaGrupnogTreninga').val();
+            let cenaTreningaSaPTrenerom = $('#fCenaTreningaSaPTrenerom').val();
+
+            if (naziv == "") {
+                $('#fNazivError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(naziv))) {
+                $('#fNazivError').empty().append("Naziv fitnes centra ne moze biti broj.").show();
+            }
+            else {
+                $('#fNazivError').empty().hide();
+                vNaziv = true;
+            }
+
+            if (ulica == "") {
+                $('#fUlicaError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(ulica))) {
+                $('#fUlicaError').empty().append("Ulica ne moze biti broj.").show();
+            }
+            else {
+                $('#fUlicaError').empty().hide();
+                vUlica = true;
+            }
+
+            if (broj == "") {
+                $('#fBrojError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(broj))) {
+                $('#fBrojError').empty().append("Unesite broj.").show();
+            }
+            else if (broj <= 0) {
+                $('#fBrojError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fBrojError').empty().hide();
+                vBroj = true;
+            }
+
+            if (grad == "") {
+                $('#fGradError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(grad))) {
+                $('#fGradError').empty().append("Grad ne moze biti broj.").show();
+            }
+            else {
+                $('#fGradError').empty().hide();
+                vGrad = true;
+            }
+
+            if (postanskiBroj == "") {
+                $('#fPostanskiBrojError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(postanskiBroj))) {
+                $('#fPostanskiBrojError').empty().append("Unesite broj.").show();
+            }
+            else if (postanskiBroj <= 0) {
+                $('#fPostanskiBrojError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fPostanskiBrojError').empty().hide();
+
+                vPostanskiBroj = true;
+            }
+
+            if (godinaOtvaranja == "") {
+                $('#fGodinaOtvaranjaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(godinaOtvaranja))) {
+                $('#fGodinaOtvaranjaError').empty().append("Unesite broj.").show();
+            }
+            else if (godinaOtvaranja <= 0) {
+                $('#fGodinaOtvaranjaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fGodinaOtvaranjaError').empty().hide();
+                vGodinaOtvaranja = true;
+            }
+
+            if (mesecnaClanarina == "") {
+                $('#fMesecnaClanarinanaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(mesecnaClanarina))) {
+                $('#fMesecnaClanarinanaError').empty().append("Unesite broj.").show();
+            }
+            else if (mesecnaClanarina <= 0) {
+                $('#fMesecnaClanarinanaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fMesecnaClanarinanaError').empty().hide();
+                vMesecnaClanarina = true;
+            }
+
+            if (godisnjaClanarina == "") {
+                $('#fGodisnjaClanarinaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(godisnjaClanarina))) {
+                $('#fGodisnjaClanarinaError').empty().append("Unesite broj.").show();
+            }
+            else if (godisnjaClanarina <= 0) {
+                $('#fGodisnjaClanarinaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fGodisnjaClanarinaError').empty().hide();
+                vGodisnjaClanarina = true;
+            }
+
+            if (cenaTreninga == "") {
+                $('#fCenaTreningaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(cenaTreninga))) {
+                $('#fCenaTreningaError').empty().append("Unesite broj.").show();
+            }
+            else if (cenaTreninga <= 0) {
+                $('#fCenaTreningaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fCenaTreningaError').empty().hide();
+                vCenaTreninga = true;
+            }
+
+            if (cenaGrupnogTreninga == "") {
+                $('#fCenaGrupnogTreningaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(cenaGrupnogTreninga))) {
+                $('#fCenaGrupnogTreningaError').empty().append("Unesite broj.").show();
+            }
+            else if (cenaGrupnogTreninga <= 0) {
+                $('#fCenaGrupnogTreningaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fCenaGrupnogTreningaError').empty().hide();
+                vCenaGrupnogTreninga = true;
+            }
+
+            if (cenaTreningaSaPTrenerom == "") {
+                $('#fCenaTreningaSaPTreneromError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(cenaTreningaSaPTrenerom))) {
+                $('#fCenaTreningaSaPTreneromError').empty().append("Unesite broj.").show();
+            }
+            else if (cenaTreningaSaPTrenerom <= 0) {
+                $('#fCenaTreningaSaPTreneromError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fCenaTreningaSaPTreneromError').empty().hide();
+                vCenaTreningaSaPTrenerom = true;
+            }
+
+            if (vNaziv && vUlica && vBroj && vGrad && vPostanskiBroj && vGodinaOtvaranja && vMesecnaClanarina && vGodisnjaClanarina && vCenaTreninga && vCenaGrupnogTreninga && vCenaTreningaSaPTrenerom) {
+
+                let adresa = ulica + ' ' + broj + ', ' + grad + ', ' + postanskiBroj;
+                $.post('/api/fitnesCentar', { 'Naziv': naziv, 'Adresa': adresa, 'GodinaOtvaranja': godinaOtvaranja, 'MesecnaClanarina': mesecnaClanarina, 'GodisnjaClanarina': godisnjaClanarina, 'CenaTreninga': cenaTreninga, 'CenaGrupnogTreninga': cenaGrupnogTreninga, 'CenaTreningaSaPTrenerom': cenaTreningaSaPTrenerom, 'Vlasnik': korisnik },
+                    function (result) {
+
+                        $.ajax({
+                            url: '/api/korisnici/' + korisnik.Id,
+                            type: 'PUT',
+                            dataType: 'json',
+                            data: { 'IdFitnesCentra': result },
+                            success: function (result) {
+                                alert('Uspesno ste dodali ' + naziv + '.');
+
+                                $('#fNaziv').val('');
+                                $('#fUlica').val('');
+                                $('#fBroj').val('');
+                                $('#fGrad').val('');
+                                $('#fGodinaOtvaranja').val('');
+                                $('#fMesecnaClanarina').val('');
+                                $('#fGodisnjaClanarina').val('');
+                                $('#fCenaTreninga').val('');
+                                $('#fCenaGrupnogTreninga').val('');
+                                $('#fCenaTreningaSaPTrenerom').val('');
+
+                                PrikaziFitnesCentreVlasnika();
+                            },
+                            error: function (xhr, ajaxOptions, thrownError) {
+                                alert('Greska kod azuriranja vlasnika: ' + xhr.status);
+                            }
+                        });
+                    }
+                ).fail(function (xhr, ajaxOptions, thrownError) {
+                    alert('Greska kod dodavanja fitnes centra: ' + xhr.status);
+                });
+            }
+        }
+
+        function DodajTrenera(fitnesCentar) {
+
+            let vKorisnickoIme = false;
+            let vLozinka = false;
+            let vPotvrdaLozinke = false;
+            let vIme = false;
+            let vPrezime = false;
+            let vPol = false;
+            let vEmail = false;
+            let vDatum = false;
+
+            let korisnickoIme = $('#tKorisnickoIme').val();
+            let lozinka = $('#tLozinka').val();
+            let potvrdaLozinke = $('#tPotvrdaLozinke').val();
+            let ime = $('#tIme').val();
+            let prezime = $('#tPrezime').val();
+            let zenskiPol = $("#tZenski").is(":checked")
+            let muskiPol = $("#tMuski").is(":checked")
+            let email = $('#tEmail').val();
+            let datum = $('#tDatum').val();
+
+            if (korisnickoIme == "") {
+                $('#tKorisnickoImeError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(korisnickoIme))) {
+                $('#tKorisnickoImeError').empty().append("Korisnicko ime ne moze biti broj.").show();
+            }
+            else {
+                $('#tKorisnickoImeError').empty().hide();
+                vKorisnickoIme = true;
+            }
+
+            if (lozinka == "") {
+                $('#tLozinkaError').empty().append("Popunite polje.").show();
+            }
+            else if (lozinka.length < 8) {
+                $('#tLozinkaError').empty().append("Lozinka mora da sadrzi minimum 8 karaktera.").show();
+            }
+            else {
+                $('#tLozinkaError').empty().hide();
+                vLozinka = true;
+            }
+
+            if (potvrdaLozinke == "") {
+                $('#tPotvrdaLozinkeError').empty().append("Popunite polje.").show();
+            }
+            else if (lozinka != potvrdaLozinke) {
+                $('#tPotvrdaLozinkeError').empty().append("Lozinke se ne podudaraju.").show();
+            }
+            else {
+                $('#tPotvrdaLozinkeError').empty().hide();
+                vPotvrdaLozinke = true;
+            }
+
+            if (ime == "") {
+                $('#tImeError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(ime))) {
+                $('#tImeError').empty().append("Ime trenera ne moze biti broj.").show();
+            }
+            else {
+                $('#tImeError').empty().hide();
+                vIme = true;
+            }
+
+            if (prezime == "") {
+                $('#tPrezimeError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(prezime))) {
+                $('#tPrezimeError').empty().append("Prezime trenera ne moze biti broj.").show();
+            }
+            else {
+                $('#tPrezimeError').empty().hide();
+                vPrezime = true;
+            }
+
+            if (!(zenskiPol || muskiPol)) {
+                $('#tPolError').empty().append("Izaberite pol.").show();
+            }
+            else {
+                if (zenskiPol) {
+                    pol = 0;
+                }
+                else {
+                    pol = 1;
+                }
+
+                $('#tPolError').empty().hide();
+                vPol = true;
+            }
+
+            let niz = email.split('@');
+
+            if (email == "") {
+                $('#tEmailError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(email))) {
+                $('#tEmailError').empty().append("Email trenera ne moze biti broj.").show();
+            }
+            else if (niz.length != 2 || (niz[0] == "" || niz[1] == "")) {
+                $('#tEmailError').empty().append("Nevalidan format email-a.").show();
+            }
+            else {
+                $('#tEmailError').empty().hide();
+                vEmail = true;
+            }
+
+            if (datum == "") {
+                $('#tDatumError').empty().append("Izaberite datum.").show();
+            }
+            else {
+                $('#tDatumError').empty().hide();
+                vDatum = true;
+            }
+
+            if (vKorisnickoIme && vLozinka && vPotvrdaLozinke && vIme && vPrezime && vPol && vEmail && vDatum) {
+
+                $.post('/api/treneri', { 'KorisnickoIme': korisnickoIme, 'Lozinka': lozinka, 'Ime': ime, 'Prezime': prezime, 'Pol': pol, 'Email': email, 'DatumRodjenja': datum, 'Uloga': 1, 'FitnesCentar': fitnesCentar },
+                    function (result) {
+                        alert('Uspesno ste registrovali trenera ' + result + '.');
+
+                        $('#tKorisnickoIme').val('');
+                        $('#tLozinka').val('');
+                        $('#tPotvrdaLozinke').val('');
+                        $('#tIme').val('');
+                        $('#tPrezime').val('');
+                        $("#tZenski").prop("checked", false);
+                        $("#tMuski").prop("checked", false);
+                        $('#tEmail').val('');
+                        $('#tDatum').val('');
+                    }
+                ).fail(function (xhr) {
+                    alert('Greska' + xhr.status);
+                });
+            }
+        }
+
+        function ObrisiFitnesCentar(idFitnesCentra, nazivFitnesCentra) {
+            $.get('/api/treninzi', function (treninzi) {
+
+                for (element in treninzi) {
+                    if (!treninzi[element].Obrisan) {
+                        if (treninzi[element].FitnesCentar.Id == idFitnesCentra) {
+                            let datumTreninga = Date.parse(treninzi[element].DatumIVreme);
+                            let trenutniDatum = Date.parse(Date());
+                            if (trenutniDatum < datumTreninga) {
+                                alert('Ne mozete obrisati ' + nazivFitnesCentra + ' zato sto postoje predstojeci treninzi koji se u njemu odrzavaju.')
+                                return;
+                            }
+                        }
+                    }
+                }
+            
+                $.when($.ajax({
+                    url: '/api/fitnesCentar/' + idFitnesCentra,
+                    type: 'DELETE',
+                    success: function (result) {
+                        alert('Obrisali ste ' + nazivFitnesCentra + '.');
+                        PrikaziFitnesCentreVlasnika();
+                    },
+                    error: function (xhr, ajaxOptions, thrownError) {
+                        alert('Greska pri brisanju fitnes centra: ' + xhr.status);
+                    }
+                })
+                ).then(
+                    $.get('/api/treneri', function (treneri) {
+                        for (element in treneri) {
+                            if (treneri[element].FitnesCentar.Id == idFitnesCentra) {
+                                $.ajax({
+                                    url: '/api/treneri/' + treneri[element].Id,
+                                    type: 'PUT',
+                                    dataType: 'json',
+                                    data: { 'ZabranjenoPrijavljivanje': true },
+                                    success: function (result) {
+                                        console.log('uspesno');
+                                    },
+                                    error: function (xhr, ajaxOptions, thrownError) {
+                                        alert('Greska pri azuriranju trenera: ' + xhr.status);
+                                    }
+                                });
+                            }
+                        }
+                    })
+                );
+                
+            });
+        }
+
+        function IzmeniFitnesCentar(fitnesCentar, idKomentara) {
+
+            let vNaziv = false;
+            let vUlica = false;
+            let vBroj = false;
+            let vGrad = false;
+            let vPostanskiBroj = false;
+            let vGodinaOtvaranja = false;
+            let vMesecnaClanarina = false;
+            let vGodisnjaClanarina = false;
+            let vCenaTreninga = false;
+            let vCenaGrupnogTreninga = false;
+            let vCenaTreningaSaPTrenerom = false;
+
+            let naziv = $('#fNazivIzmena').val();
+            let ulica = $('#fUlicaIzmena').val();
+            let broj = $('#fBrojIzmena').val();
+            let grad = $('#fGradIzmena').val();
+            let postanskiBroj = $('#fPostanskiBrojIzmena').val();
+            let godinaOtvaranja = $('#fGodinaOtvaranjaIzmena').val();
+            let mesecnaClanarina = $('#fMesecnaClanarinaIzmena').val();
+            let godisnjaClanarina = $('#fGodisnjaClanarinaIzmena').val();
+            let cenaTreninga = $('#fCenaTreningaIzmena').val();
+            let cenaGrupnogTreninga = $('#fCenaGrupnogTreningaIzmena').val();
+            let cenaTreningaSaPTrenerom = $('#fCenaTreningaSaPTreneromIzmena').val();
+
+            if (naziv == "") {
+                $('#fNazivIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(naziv))) {
+                $('#fNazivIzmenaError').empty().append("Naziv fitnes centra ne moze biti broj.").show();
+            }
+            else {
+                $('#fNazivIzmenaError').empty().hide();
+                vNaziv = true;
+            }
+
+            if (ulica == "") {
+                $('#fUlicaIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(ulica))) {
+                $('#fUlicaIzmenaError').empty().append("Ulica ne moze biti broj.").show();
+            }
+            else {
+                $('#fUlicaIzmenaError').empty().hide();
+                vUlica = true;
+            }
+
+            if (broj == "") {
+                $('#fBrojIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(broj))) {
+                $('#fBrojIzmenaError').empty().append("Unesite broj.").show();
+            }
+            else if (broj <= 0) {
+                $('#fBrojIzmenaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fBrojIzmenaError').empty().hide();
+                vBroj = true;
+            }
+
+            if (grad == "") {
+                $('#fGradIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (!isNaN(parseInt(grad))) {
+                $('#fGradIzmenaError').empty().append("Grad ne moze biti broj.").show();
+            }
+            else {
+                $('#fGradIzmenaError').empty().hide();
+                vGrad = true;
+            }
+
+            if (postanskiBroj == "") {
+                $('#fPostanskiBrojIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(postanskiBroj))) {
+                $('#fPostanskiBrojIzmenaError').empty().append("Unesite broj.").show();
+            }
+            else if (postanskiBroj <= 0) {
+                $('#fPostanskiBrojIzmenaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fPostanskiBrojIzmenaError').empty().hide();
+
+                vPostanskiBroj = true;
+            }
+
+            if (godinaOtvaranja == "") {
+                $('#fGodinaOtvaranjaIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(godinaOtvaranja))) {
+                $('#fGodinaOtvaranjaIzmenaError').empty().append("Unesite broj.").show();
+            }
+            else if (godinaOtvaranja <= 0) {
+                $('#fGodinaOtvaranjaIzmenaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fGodinaOtvaranjaIzmenaError').empty().hide();
+                vGodinaOtvaranja = true;
+            }
+
+            if (mesecnaClanarina == "") {
+                $('#fMesecnaClanarinaIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(mesecnaClanarina))) {
+                $('#fMesecnaClanarinaIzmenaError').empty().append("Unesite broj.").show();
+            }
+            else if (mesecnaClanarina <= 0) {
+                $('#fMesecnaClanarinaIzmenaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fMesecnaClanarinaIzmenaError').empty().hide();
+                vMesecnaClanarina = true;
+            }
+
+            if (godisnjaClanarina == "") {
+                $('#fGodisnjaClanarinaIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(godisnjaClanarina))) {
+                $('#fGodisnjaClanarinaIzmenaError').empty().append("Unesite broj.").show();
+            }
+            else if (godisnjaClanarina <= 0) {
+                $('#fGodisnjaClanarinaIzmenaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fGodisnjaClanarinaIzmenaError').empty().hide();
+                vGodisnjaClanarina = true;
+            }
+
+            if (cenaTreninga == "") {
+                $('#fCenaTreningaIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(cenaTreninga))) {
+                $('#fCenaTreningaIzmenaError').empty().append("Unesite broj.").show();
+            }
+            else if (cenaTreninga <= 0) {
+                $('#fCenaTreningaIzmenaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fCenaTreningaIzmenaError').empty().hide();
+                vCenaTreninga = true;
+            }
+
+            if (cenaGrupnogTreninga == "") {
+                $('#fCenaGrupnogTreningaIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(cenaGrupnogTreninga))) {
+                $('#fCenaGrupnogTreningaIzmenaError').empty().append("Unesite broj.").show();
+            }
+            else if (cenaGrupnogTreninga <= 0) {
+                $('#fCenaGrupnogTreningaIzmenaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fCenaGrupnogTreningaIzmenaError').empty().hide();
+                vCenaGrupnogTreninga = true;
+            }
+
+            if (cenaTreningaSaPTrenerom == "") {
+                $('#fCenaTreningaSaPTreneromIzmenaError').empty().append("Popunite polje.").show();
+            }
+            else if (isNaN(parseInt(cenaTreningaSaPTrenerom))) {
+                $('#fCenaTreningaSaPTreneromIzmenaError').empty().append("Unesite broj.").show();
+            }
+            else if (cenaTreningaSaPTrenerom <= 0) {
+                $('#fCenaTreningaSaPTreneromIzmenaError').empty().append("Unesite pozitivan broj.").show();
+            }
+            else {
+                $('#fCenaTreningaSaPTreneromIzmenaError').empty().hide();
+                vCenaTreningaSaPTrenerom = true;
+            }
+
+            if (vNaziv && vUlica && vBroj && vGrad && vPostanskiBroj && vGodinaOtvaranja && vMesecnaClanarina && vGodisnjaClanarina && vCenaTreninga && vCenaGrupnogTreninga && vCenaTreningaSaPTrenerom) {
+
+                let adresa = ulica + ' ' + broj + ', ' + grad + ', ' + postanskiBroj;
+
+                if (idKomentara != -1) {
+                    $.ajax({
+                        url: '/api/komentari/' + idKomentara,
+                        type: 'PUT',
+                        dataType: 'json',
+                        data: { 'StariNazivFC': fitnesCentar.Naziv, 'NoviNazivFC': naziv },
+                        success: function (result) {
+                            console.log('Uspesno azuriranje komentara.');
+                        },
+                        error: function (xhr, ajaxOptions, thrownError) {
+                            console.log('Greska kod azuriranja komentara: ' + xhr.status);
+                        }
+                    });
+                }
+
+                fitnesCentar.Naziv = naziv;
+                fitnesCentar.Adresa = adresa;
+                fitnesCentar.GodinaOtvaranja = godinaOtvaranja;
+                fitnesCentar.MesecnaClanarina = mesecnaClanarina;
+                fitnesCentar.GodisnjaClanarina = godisnjaClanarina;
+                fitnesCentar.CenaTreninga = cenaTreninga;
+                fitnesCentar.CenaGrupnogTreninga = cenaGrupnogTreninga;
+                fitnesCentar.CenaTreningaSaPTrenerom = cenaTreningaSaPTrenerom;
+
+                $.when(
+                    $.ajax({
+                        url: '/api/fitnesCentar/' + fitnesCentar.Id,
+                        type: 'PUT',
+                        dataType: 'json',
+                        data: { 'Naziv': naziv, 'Adresa': adresa, 'GodinaOtvaranja': godinaOtvaranja, 'MesecnaClanarina': mesecnaClanarina, 'GodisnjaClanarina': godisnjaClanarina, 'CenaTreninga': cenaTreninga, 'CenaGrupnogTreninga': cenaGrupnogTreninga, 'CenaTreningaSaPTrenerom': cenaTreningaSaPTrenerom },
+                        success: function (result) {
+                            console.log('Uspesno azuriranje fitnes centra.');
+                        },
+                        error: function (xhr, ajaxOptions, thrownError) {
+                            alert('Greska kod azuriranja fitnes centra: ' + xhr.status);
+                        }
+                    }),
+                    $.get('/api/treninzi', function (treninzi) {
+                        for (element in treninzi) {
+                            if (treninzi[element].FitnesCentar.Id == fitnesCentar.Id) {
+                                $.ajax({
+                                    url: '/api/treninzi/' + treninzi[element].Id,
+                                    type: 'PUT',
+                                    dataType: 'json',
+                                    data: { 'FitnesCentar': fitnesCentar },
+                                    success: function (result) {
+                                        console.log('Uspesno azuriranje treninga.')
+                                    },
+                                    error: function (xhr, ajaxOptions, thrownError) {
+                                        alert('Greska kod azuriranja treninga: ' + xhr.status);
+                                    }
+                                });
+                            }
+                        }
+                    })
+                ).then(
+                    $.get('/api/korisnici', function (korisnik) {
+                        $.ajax({
+                            url: '/api/treneri/' + korisnik.Id,
+                            type: 'PUT',
+                            dataType: 'json',
+                            data: { 'FitnesCentar': fitnesCentar },
+                            success: function (result) {
+                                console.log('Uspesno azuriranje trenera.')
+                                alert('Uspesno ste izmenili ' + naziv + '.');
+
+                                $('#fNazivIzmena').val('');
+                                $('#fUlicaIzmena').val('');
+                                $('#fBrojIzmena').val('');
+                                $('#fGradIzmena').val('');
+                                $('#fPostanskiBrojIzmena').val('');
+                                $('#fGodinaOtvaranjaIzmena').val('');
+                                $('#fMesecnaClanarinaIzmena').val('');
+                                $('#fGodisnjaClanarinaIzmena').val('');
+                                $('#fCenaTreningaIzmena').val('');
+                                $('#fCenaGrupnogTreningaIzmena').val('');
+                                $('#fCenaTreningaSaPTreneromIzmena').val('');
+
+                                PrikaziFitnesCentreVlasnika();
+                            },
+                            error: function (xhr, ajaxOptions, thrownError) {
+                                alert('Greska pri azuriranju korisnika: ' + xhr.status);
+                            }
+                        });
+                    })
+                );
+            }
+        }
+
+        function PrikaziTrenere(idFitnesCentra, nazivFitnesCentra) {
+            $.get('/api/treneri', function (treneri) {
+                var data = [];
+                for (element in treneri) {
+                    if (treneri[element].FitnesCentar.Id == idFitnesCentra) {
+                        data.push(treneri[element]);
+                    }
+                }
+
+                var htmlSadrzaj = '<header class="text-center bg-info"><h2>Treneri: ' + nazivFitnesCentra + '</h2></header>';
+                htmlSadrzaj += '<table class="table table-striped table-bordered">';
+                htmlSadrzaj += '<tr><th class="col-xs-1">Ime</th><th class="col-xs-1">Prezime</th><th class="col-xs-1">Pol</th><th class="col-xs-1">Email</th><th class="col-xs-1">Datum rodjenja</th><th class="col-xs-1"></th></tr>';
+
+                for (element in data) {
+                    htmlSadrzaj += '<tr><td>' + data[element].Ime + '</td>';
+                    htmlSadrzaj += '<td>' + data[element].Prezime + '</td>';
+                    if (data[element].Pol == 0) {
+                        var pol = 'Zenski';
+                    }
+                    else {
+                        pol = 'Muski';
+                    }
+                    htmlSadrzaj += '<td>' + pol + '</td>';
+                    htmlSadrzaj += '<td>' + data[element].Email + '</td>';
+
+                    let d = data[element].DatumRodjenja;
+                    let niz = d.split('T');
+                    let datum = niz[0].split('-');
+
+                    htmlSadrzaj += '<td>' + datum[2] + '/' + datum[1] + '/' + datum[0] + '</td>';
+                    htmlSadrzaj += '<td><button class="btn btn-danger btnBlokirajTrenera" name="' + data[element].Id + '">Blokiraj trenera</button></td></tr>';
+                }
+
+                htmlSadrzaj += '</table>';
+                htmlSadrzaj += '<button style="float:right" class="btn btn-success btnSakrijTrenere">Sakrij trenere</button></br>';
+
+                $('#treneriFitnesCentra').html(htmlSadrzaj);
+                $('#treneriFitnesCentra').show();
+
+            }).fail(function (xhr) {
+                alert('Greska: ' + xhr.status);
+            });
+        }
+
+        function BlokirajTrenera(idTrenera) {
+            $.get('/api/treneri', function (treneri) {
+                for (element in treneri) {
+                    if (treneri[element].Id == idTrenera) {
+                        if (treneri[element].ZabranjenoPrijavljivanje) {
+                            alert('Trener ' + treneri[element].KorisnickoIme + ' je vec blokiran.')
+                        }
+                        else {
+                            $.ajax({
+                                url: '/api/treneri/' + idTrenera,
+                                type: 'PUT',
+                                dataType: 'json',
+                                data: { 'ZabranjenoPrijavljivanje': true, 'FitnesCentar': treneri[element].FitnesCentar },
+                                success: function (result) {
+                                    alert('Uspesno ste blokirali trenera ' + result + '.')
+                                },
+                                error: function (xhr, ajaxOptions, thrownError) {
+                                    alert('Greska: ' + xhr.status);
+                                }
+                            });
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+
+    </script>
+</head>
+<body>
+    <nav class="navbar" style="background-color: #e3f2fd;">
+        <ul class="nav navbar-nav navbar-form navbar-left" name="navigacija">
+            <li class="active" style="height:auto"><a href="Index.html" style="font-size:20px">Fitnes centri</a></li>
+        </ul>
+        <div id="divUlogovan" class="navbar-form navbar-right" style="margin-right:auto;" hidden>
+            <a href="Profil.html" class="btn btn-info navbar-btn" id="btnProfil">Profil</a>
+            <button class="btn btn-primary navbar-btn" id="btnLogout">Izloguj se</button>
+        </div>
+        <div class="navbar-form navbar-right" id="divIzlogovan">
+            <input type="text" placeholder="Korisnicko ime" class="form-control" id="korisnickoIme" />
+            <input type="password" placeholder="Lozinka" class="form-control" id="lozinka" />
+            <button class="btn btn-primary navbar-btn" id="btnLogin">Uloguj se</button>
+            <a href="Registracija.html" class="btn btn-success navbar-btn" id="btnRegistracija" style="margin-right:auto;">Registruj se</a><br />
+            <label style="text-align:center" class="error col-xs-8" id="loginError" hidden></label>
+        </div>
+    </nav>
+
+    <div class="container" id="pocetna">
+        <div class="row">
+            <header class="text-center bg-primary">
+                <h2>Fitnes centri</h2>
+            </header>
+            <div id="fitnesCentri">
+            </div>
+            <div class="container">
+                <header class="text-center bg-info">
+                    <h2>Pretraga</h2>
+                </header>
+                <div class="col-xs-4">
+                    <label for="pretragaNaziv">Naziv:</label>
+                    <input type="text" id="pretragaNaziv" name="naziv" class="form-control" />
+                </div>
+                <div class="col-xs-4">
+                    <label for="pretragaAdresa">Adresa:</label>
+                    <input type="text" id="pretragaAdresa" name="adresa" class="form-control" />
+                </div>
+                <div class="col-xs-4">
+                    <label for="pretragaGodina">Godina otvaranja:</label>
+                    <input type="number" onkeydown="return false" id="pretragaGodina" name="pGodina" class="form-control" step="1"/><br />
+                </div>
+                <div class="col-xs-12">
+                    <button style="float:right" class="btn btn-info col-xs-2" id="btnPretraga">Pretrazi</button><br />
+                    <label id="pretragaError" class="error col-xs-12" style="text-align:center" hidden></label>
+                </div>
+            </div>
+
+            <div>
+                <header class="text-center bg-info">
+                    <h2>Sortiranje</h2>
+                </header>
+                <div class="col-xs-6">
+                    <label for="kriterijumSortiranja">Kriterijum:</label>
+                    <select id="kriterijumSortiranja" name="sortiranje" class="form-control">
+                        <option></option>
+                        <option>Naziv</option>
+                        <option>Adresa</option>
+                        <option>Godina otvaranja</option>
+                    </select>
+                </div>
+                <div class="col-xs-6">
+                    <label for="nacinSortiranja">Nacin:</label>
+                    <select id="nacinSortiranja" name="sort" class="form-control">
+                        <option></option>
+                        <option>Opadajuce</option>
+                        <option>Rastuce</option>
+                    </select><br />
+                </div>
+                <div class="col-xs-12">
+                    <button style="float:right" class="btn btn-info col-xs-2" id="btnSortiranje">Sortiraj</button><br />
+                    <label id="sortiranjeError" class="error col-xs-12" style="text-align:center" hidden></label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container" id="posetilacTreninzi" hidden>
+        <div class="row">
+            <header class="text-center bg-primary">
+                <h2>Grupni treninzi</h2>
+            </header>
+            <div id="pTreninzi">
+            </div>
+            <div class="container">
+                <header class="text-center bg-info">
+                    <h2>Pretraga</h2>
+                </header>
+                <div class="col-xs-4">
+                    <label for="pPretragaNaziv">Naziv treninga:</label>
+                    <input type="text" id="pPretragaNaziv" name="pNaziv" class="form-control" />
+                </div>
+                <div class="col-xs-4">
+                    <label for="pPretragaTip">Tip treninga:</label>
+                    <input type="text" id="pPretragaTip" name="pTip" class="form-control" />
+                </div>
+                <div class="col-xs-4">
+                    <label for="pPretragaNazivFC">Naziv fitnes centra:</label>
+                    <input type="text" id="pPretragaNazivFC" name="pNazivFC" class="form-control" /><br />
+                </div>
+                <div class="col-xs-12">
+                    <button style="float:right" class="btn btn-info col-xs-2" id="btnPPretraga">Pretrazi</button><br />
+                    <label id="pPretragaError" class="error col-xs-12" style="text-align:center" hidden></label>
+                </div>
+            </div>
+
+            <div>
+                <header class="text-center bg-info">
+                    <h2>Sortiranje</h2>
+                </header>
+                <div class="col-xs-6">
+                    <label for="pKriterijumSortiranja">Kriterijum:</label>
+                    <select id="pKriterijumSortiranja" name="pSortiranje" class="form-control">
+                        <option></option>
+                        <option>Naziv treninga</option>
+                        <option>Tip treninga</option>
+                        <option>Datum i vreme</option>
+                    </select>
+                </div>
+                <div class="col-xs-6">
+                    <label for="pNacinSortiranja">Nacin:</label>
+                    <select id="pNacinSortiranja" name="pSort" class="form-control">
+                        <option></option>
+                        <option>Opadajuce</option>
+                        <option>Rastuce</option>
+                    </select><br />
+                </div>
+                <div class="col-xs-12">
+                    <button style="float:right" class="btn btn-info col-xs-2" id="btnPSortiranje">Sortiraj</button><br />
+                    <label id="pSortiranjeError" class="error col-xs-12" style="text-align:center" hidden></label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container" id="ranijiTreninziTrener" hidden>
+        <div class="row">
+            <header class="text-center bg-primary">
+                <h2>Raniji grupni treninzi</h2>
+            </header>
+            <div id="tTreninzi">
+            </div>
+            <div id="posetiociTreninga" hidden>
+            </div><br />
+            <div class="container">
+                <header class="text-center bg-info">
+                    <h2>Pretraga</h2>
+                </header>
+                <div class="col-xs-4">
+                    <label for="tPretragaNaziv">Naziv treninga:</label>
+                    <input type="text" id="tPretragaNaziv" name="tNaziv" class="form-control" />
+                </div>
+                <div class="col-xs-4">
+                    <label for="tPretragaTip">Tip treninga:</label>
+                    <input type="text" id="tPretragaTip" name="tTip" class="form-control" />
+                </div>
+                <div class="col-xs-4">
+                    <label for="tPretragaDatum">Datum i vreme odrzavanja:</label>
+                    <input type="datetime-local" id="tPretragaDatum" name="tDatum" class="form-control"><br />
+                </div>
+                <div class="col-xs-12">
+                    <button style="float:right" class="btn btn-info col-xs-2" id="btnTPretraga">Pretrazi</button><br />
+                    <label id="tPretragaError" class="error col-xs-12" style="text-align:center" hidden></label>
+                </div>
+            </div>
+
+            <div>
+                <header class="text-center bg-info">
+                    <h2>Sortiranje</h2>
+                </header>
+                <div class="col-xs-6">
+                    <label for="tKriterijumSortiranja">Kriterijum:</label>
+                    <select id="tKriterijumSortiranja" name="tSortiranje" class="form-control">
+                        <option></option>
+                        <option>Naziv treninga</option>
+                        <option>Tip treninga</option>
+                        <option>Datum i vreme</option>
+                    </select>
+                </div>
+                <div class="col-xs-6">
+                    <label for="tNacinSortiranja">Nacin:</label>
+                    <select id="tNacinSortiranja" name="tSort" class="form-control">
+                        <option></option>
+                        <option>Opadajuce</option>
+                        <option>Rastuce</option>
+                    </select><br />
+                </div>
+                <div class="col-xs-12">
+                    <button style="float:right" class="btn btn-info col-xs-2" id="btnTSortiranje">Sortiraj</button><br />
+                    <label id="tSortiranjeError" class="error col-xs-12" style="text-align:center" hidden></label>
+                </div>
+            </div><br />
+        </div>
+    </div>
+
+    <div class="container" id="predstojeciTreninziTrener" hidden>
+        <header class="text-center bg-primary">
+            <h2>Predstojeci grupni treninzi</h2>
+        </header>
+        <div id="tPredstojeciTreninzi">
+        </div>
+        <div id="posetiociPredstojecihTreninga" hidden>
+        </div><br />
+        <div id="dodavanje" class="col-xs-6" style="float:left">
+            <header class="text-center bg-info"><h1>Dodaj trening</h1></header>
+            <div class="form-group">
+                <label for="dNaziv">Naziv treninga:</label>
+                <input type="text" id="dNaziv" class="form-control" placeholder="Naziv" />
+                <label id="nazivError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="dTip">Tip treninga:</label>
+                <input type="text" id="dTip" class="form-control" placeholder="Tip" />
+                <label id="tipError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="dTrajanje">Trajanje treninga:</label>
+                <input type="text" id="dTrajanje" class="form-control" placeholder="Trajanje" />
+                <label id="trajanjeError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="dMaksPosetilaca">Maksimalan broj posetilaca:</label>
+                <input type="text" id="dMaksPosetilaca" class="form-control" placeholder="Maksimalan broj posetilaca" />
+                <label id="posetiociError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="dDatumIVreme">Datum i vreme odrzavanja:</label>
+                <input type="datetime-local" id="dDatumIVreme" name="dDatum" class="form-control">
+                <label id="datumError" class="error" hidden></label>
+            </div>
+            <button style="float:right" class="btn btn-success col-xs-2" id="btnDodaj">Dodaj</button>
+        </div>
+
+        <div id="izmenaTreninga" class="col-xs-6" style="float:right" hidden>
+            <header class="text-center bg-info"><h1>Izmena treninga</h1></header>
+            <div class="form-group">
+                <label for="nazivIzmena">Naziv treninga:</label>
+                <input type="text" id="nazivIzmena" class="form-control" name="nIzmena" placeholder="Naziv" />
+                <label id="nazivIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="tipIzmena">Tip treninga:</label>
+                <input type="text" id="tipIzmena" name="tIzmena" class="form-control" placeholder="Tip" />
+                <label id="tipIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="trajanjeIzmena">Trajanje treninga:</label>
+                <input type="text" id="trajanjeIzmena" name="trIzmena" class="form-control" placeholder="Trajanje" />
+                <label id="trajanjeIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="maksPosetilacaIzmena">Maksimalan broj posetilaca:</label>
+                <input type="text" id="maksPosetilacaIzmena" name="mIzmena" class="form-control" placeholder="Maksimalan broj posetilaca" />
+                <label id="maksPosetilacaIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="datumIVremeIzmena">Datum i vreme odrzavanja:</label>
+                <input type="datetime-local" id="datumIVremeIzmena" name="dIzmena" class="form-control">
+                <label id="datumIVremeIzmenaError" class="error" hidden></label>
+            </div>
+            <div style="float:right;margin-right:auto;">
+                <button class="btn btn-success" id="btnSacuvaj">Sacuvaj</button>
+                <button class="btn btn-danger" id="btnOdbaci">Odbaci</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="containerFC" id="vFitnesCentri" hidden>
+        <header class="text-center bg-primary">
+            <h2>Moji fitnes centri</h2>
+        </header>
+        <div id="vlasnikFitnesCentri">
+        </div>
+        <div id="treneriFitnesCentra" hidden>
+        </div>
+        <div id="dodavanjeFitnesCentra" class="col-xs-6" style="float:left">
+            <header class="text-center bg-info"><h1>Dodaj fitnes centar</h1></header>
+            <div class="form-group">
+                <label for="fNaziv">Naziv fitnes centra:</label>
+                <input type="text" id="fNaziv" class="form-control" placeholder="Naziv" />
+                <label id="fNazivError" class="error" hidden></label>
+            </div>
+            <div class="form-group col-xs-6">
+                <label for="fUlica">Ulica:</label>
+                <input type="text" id="fUlica" class="form-control" placeholder="Ulica" />
+                <label id="fUlicaError" class="error" hidden></label><br />
+
+                <label for="fGrad">Grad:</label>
+                <input type="text" id="fGrad" class="form-control" placeholder="Grad" />
+                <label id="fGradError" class="error" hidden></label>
+            </div>
+            <div class="form-group col-xs-6">
+                <label for="fBroj">Broj:</label>
+                <input type="text" id="fBroj" class="form-control" placeholder="Broj" />
+                <label id="fBrojError" class="error" hidden></label><br />
+
+                <label for="fPostanskiBroj">Postanski broj:</label>
+                <input type="text" id="fPostanskiBroj" class="form-control" placeholder="Postanski broj" />
+                <label id="fPostanskiBrojError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fGodinaOtvaranja">Godina otvaranja:</label>
+                <input type="text" id="fGodinaOtvaranja" class="form-control" placeholder="Godina otvaranja" />
+                <label id="fGodinaOtvaranjaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fMesecnaClanarina">Mesecna clanarina:</label>
+                <input type="text" id="fMesecnaClanarina" class="form-control" placeholder="Mesecna clanarina" />
+                <label id="fMesecnaClanarinanaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fGodisnjaClanarina">Godisnja clanarina:</label>
+                <input type="text" id="fGodisnjaClanarina" class="form-control" placeholder="Godisnja clanarina" />
+                <label id="fGodisnjaClanarinaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fCenaTreninga">Cena jednog treninga:</label>
+                <input type="text" id="fCenaTreninga" class="form-control" placeholder="Cena jednog treninga" />
+                <label id="fCenaTreningaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fCenaGrupnogTreninga">Cena grupnog treninga:</label>
+                <input type="text" id="fCenaGrupnogTreninga" class="form-control" placeholder="Cena grupnog treninga" />
+                <label id="fCenaGrupnogTreningaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fCenaTreningaSaPTrenerom">Cena treninga sa personalnim trenerom:</label>
+                <input type="text" id="fCenaTreningaSaPTrenerom" class="form-control" placeholder="Cena treninga sa personalnim trenerom" />
+                <label id="fCenaTreningaSaPTreneromError" class="error" hidden></label>
+            </div>
+            <button style="float:right" class="btn btn-success col-xs-2" id="btnDodajFitnesCentar">Dodaj</button>
+        </div>
+
+        <div id="izmenaFitnesCentra" class="col-xs-6" style="float:left" hidden>
+            <header class="text-center bg-info"><h1>Izmeni fitnes centar</h1></header>
+            <div class="form-group">
+                <label for="fNazivIzmena">Naziv fitnes centra:</label>
+                <input type="text" id="fNazivIzmena" name="nazivFCIzmena" class="form-control" placeholder="Naziv" />
+                <label id="fNazivIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group col-xs-6">
+                <label for="fUlicaIzmena">Ulica:</label>
+                <input type="text" id="fUlicaIzmena" name="ulicaFCIzmena" class="form-control" placeholder="Ulica" />
+                <label id="fUlicaIzmenaError" class="error" hidden></label><br />
+
+                <label for="fGradIzmena">Grad:</label>
+                <input type="text" id="fGradIzmena" name="gradFCIzmena" class="form-control" placeholder="Grad" />
+                <label id="fGradIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group col-xs-6">
+                <label for="fBrojIzmena">Broj:</label>
+                <input type="text" id="fBrojIzmena" name="brojFCIzmena" class="form-control" placeholder="Broj" />
+                <label id="fBrojIzmenaError" class="error" hidden></label><br />
+
+                <label for="fPostanskiBrojIzmena">Postanski broj:</label>
+                <input type="text" id="fPostanskiBrojIzmena" name="postanskiBrojFCIzmena" class="form-control" placeholder="Postanski broj" />
+                <label id="fPostanskiBrojIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fGodinaOtvaranjaIzmena">Godina otvaranja:</label>
+                <input type="text" id="fGodinaOtvaranjaIzmena" name="godinaOtvaranjaFCIzmena" class="form-control" placeholder="Godina otvaranja" />
+                <label id="fGodinaOtvaranjaIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fMesecnaClanarinaIzmena">Mesecna clanarina:</label>
+                <input type="text" id="fMesecnaClanarinaIzmena" name="mesecnaClanarinaFCIzmena" class="form-control" placeholder="Mesecna clanarina" />
+                <label id="fMesecnaClanarinaIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fGodisnjaClanarinaIzmena">Godisnja clanarina:</label>
+                <input type="text" id="fGodisnjaClanarinaIzmena" name="godisnjaClanarinaFCIzmena" class="form-control" placeholder="Godisnja clanarina" />
+                <label id="fGodisnjaClanarinaIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fCenaTreningaIzmena">Cena jednog treninga:</label>
+                <input type="text" id="fCenaTreningaIzmena" name="cenaTreningaFCIzmena" class="form-control" placeholder="Cena jednog treninga" />
+                <label id="fCenaTreningaIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fCenaGrupnogTreningaIzmena">Cena grupnog treninga:</label>
+                <input type="text" id="fCenaGrupnogTreningaIzmena" name="cenaGrupnogTreningaFCIzmena" class="form-control" placeholder="Cena grupnog treninga" />
+                <label id="fCenaGrupnogTreningaIzmenaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="fCenaTreningaSaPTreneromIzmena">Cena treninga sa personalnim trenerom:</label>
+                <input type="text" id="fCenaTreningaSaPTreneromIzmena" name="cenaTreningaSaPTreneromFCIzmena" class="form-control" placeholder="Cena treninga sa personalnim trenerom" />
+                <label id="fCenaTreningaSaPTreneromIzmenaError" class="error" hidden></label>
+            </div>
+            <div style="float:right;margin-right:auto;">
+                <button class="btn btn-success" id="btnSacuvajFC">Sacuvaj</button>
+                <button class="btn btn-danger" id="btnOdbaciFC">Odbaci</button>
+            </div>
+        </div>
+
+        <div id="dodavanjeTrenera" class="col-xs-6" style="float:right" hidden>
+            <header class="text-center bg-info"><h1>Dodaj trenera</h1></header>
+            <div class="form-group">
+                <label for="tKorisnickoIme">Korisnicko ime:</label>
+                <input type="text" id="tKorisnickoIme" class="form-control" placeholder="Korisnicko ime" />
+                <label id="tKorisnickoImeError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="tLozinka">Lozinka:</label>
+                <input type="password" id="tLozinka" class="form-control" placeholder="Lozinka" />
+                <label id="tLozinkaError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="tPotvrdaLozinke">Potvrdi lozinku:</label>
+                <input type="password" id="tPotvrdaLozinke" class="form-control" placeholder="Potvrdi lozinku" />
+                <label id="tPotvrdaLozinkeError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="tIme">Ime:</label>
+                <input type="text" id="tIme" class="form-control" placeholder="Ime" />
+                <label id="tImeError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="tPrezime">Prezime:</label>
+                <input type="text" id="tPrezime" class="form-control" placeholder="Prezime" />
+                <label id="tPrezimeError" class="error" hidden></label>
+            </div>
+            <div>
+                <label>Pol: &nbsp;</label>
+                <input type="radio" id="tZenski" name="tPol" value="ZENSKI">
+                <label for="tZenski">Zenski</label>&nbsp;
+                <input type="radio" id="tMuski" name="tPol" value="MUSKI">
+                <label for="tMuski">Muski</label><br />
+                <label id="tPolError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="tEmail">Email:</label>
+                <input type="email" id="tEmail" class="form-control" placeholder="pera@peric.com" />
+                <label id="tEmailError" class="error" hidden></label>
+            </div>
+            <div class="form-group">
+                <label for="tDatum">Datum rodjenja:</label>
+                <input type="date" id="tDatum" class="form-control"/>
+                <label id="tDatumError" class="error" hidden></label>
+            </div>
+            <div style="float:right;margin-right:auto;">
+                <button class="btn btn-success" id="btnDodajT">Dodaj</button>
+                <button class="btn btn-danger" id="btnOdbaciDodavanjeTrenera">Odbaci</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
